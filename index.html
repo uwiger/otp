@@ -1,0 +1,182 @@
+<html>
+<title>Currently in the 'pu' branch</title>
+<style type="text/css" media="all">
+    body {
+      width: 600px;
+    }
+</style>
+<body>
+<h1>Currently in the 'pu' branch</h1>
+<p>The comment about each topic branch is taken from the latest
+<em>What's cooking in erlang/otp</em> email and may no longer apply if
+the topic branch has been updated.
+<ul>
+<li><a href="http://github.com/erlang/otp/commit/14912db5a44879054a5ac5833f5e18b4775a5b3d">jp/gcc-detection-in-makefiles</a> (Makefile.in
+, asn1, crypto, erts, ic, orber, os_mon, runtime_tools, ssl, tools):
+
+<ul>
+<li><a href="http://github.com/erlang/otp/commit/51be25f1378f5b7c15c796ad9fb7d63a5f131dc8">Replace the $(CC_IS_GCC) flag by more generic $(CC_NAME) variable</a></li>
+<li><a href="http://github.com/erlang/otp/commit/34fb108baa55b5785d5f3413e3e30e5790ff3b0d">Fix GCC detection in ERTS configure script and Makefiles</a></li>
+</ul>
+<p><i>New topic branch</i>
+<p>
+</li>
+<li><a href="http://github.com/erlang/otp/commit/5f68808bea3588072fa5450dcd1693f36c637753">dgud/dbg_mac_menu</a> (debugger):
+
+<ul>
+<li><a href="http://github.com/erlang/otp/commit/25c200b183959eddd5bc538cd4fa16144889d363">Dbg: Expand the module listbox when window grows.</a></li>
+<li><a href="http://github.com/erlang/otp/commit/a48861377770f06c506afc84c5e2d8ce4dfb2937">Dbg: Cut variable bindings after 80 chars.</a></li>
+<li><a href="http://github.com/erlang/otp/commit/776ab023aeedba4408b8650a5f40fc40d79fb398">Dbg: Fixed documentation links to the new index.html</a></li>
+<li><a href="http://github.com/erlang/otp/commit/b7c6db611f3dd1a791870a0017b4c7a0a30c9289">Dbg Fixed mac gui issues</a></li>
+</ul>
+<p>
+<font color="red">This topic branch introduces 4 lines with whitespace errors.</font>
+<p><i>New topic branch</i>
+<p>
+</li>
+<li><a href="http://github.com/erlang/otp/commit/98f7ec83d024d67fb65278b6175111fb17d400cd">at/windows_build_fixes</a> (erts, otp):
+
+<ul>
+<li><a href="http://github.com/erlang/otp/commit/346b530950c2c6c80d179d8ff1fcc835ed95c1b8">Updated README.win32 for compiling with VS2008 and issues with mc.exe</a></li>
+<li><a href="http://github.com/erlang/otp/commit/98751d52659b0f6d6193326cb1debea7a5628a74">Allow mc.sh and rc.sh to work when path to mc/rc.exe has spaces</a></li>
+</ul>
+<p><i>New topic branch</i>
+<p>
+</li>
+<li><a href="http://github.com/erlang/otp/commit/6beaa96983621224f603b5586a641fe706457f9c">cf/compile_warning_as_error</a> (compiler, erts):
+
+<ul>
+<li><a href="http://github.com/erlang/otp/commit/d29a3356dcd6664c840590aa751311ae6bf28fa1">Add option -Werror in erlc(1)</a></li>
+<li><a href="http://github.com/erlang/otp/commit/13124f55353f7942ead0c1ed32b8a3bce1f396d3">compile: add flag warnings_as_errors to treat warnings as errors</a></li>
+<li><a href="http://github.com/erlang/otp/commit/8a944af92a3fa6ebdd6ee2f3c1a1e40ddf26d40b">compile.erl: remove trailing whitespace</a></li>
+</ul>
+<p><i>New topic branch</i>
+<p>
+</li>
+<li><a href="http://github.com/erlang/otp/commit/5c700c9a0716024095f274897bbceea80b1b0b1a">jp/dependencies_makefile</a> (compiler, erts):
+
+<ul>
+<li><a href="http://github.com/erlang/otp/commit/c0734e8a85270d08beda34c4e28aed21b350fb18">Add dependencies Makefile generation to erlc(1) and compile(3)</a></li>
+</ul>
+<p><i>New topic branch</i>
+<p>
+</li>
+<li><a href="http://github.com/erlang/otp/commit/87babb1b0d56d450f61eb7d16081cb06e10bec23">bw/win32-address-space-fix</a> (erts):
+
+<ul>
+<li><a href="http://github.com/erlang/otp/commit/357167ef21651d08e38e47eadea249a399226731"> win32 mmap emulation for mseg support + largeaddressaware linking</a></li>
+</ul>
+<p>
+<font color="red">This topic branch introduces 12 lines with whitespace errors.</font>
+<p>The branch in its current shape cannot be included in OTP because
+it includes copyrighted code with an unknown license. It is also
+overkill to emulate mmap() (and it could cause other problems in
+the future); the easiest and most straightforward solution is to
+implement mseg_create()/mseg_destroy() (in erl_mseg.c) using
+VirtualAlloc()/VirtualFree().
+
+<p>
+</li>
+<li><a href="http://github.com/erlang/otp/commit/4ce4494f715443d2c0e2ff9cb1c8e677a0d64e77">cf/epp-macro-overloading</a> (otp, stdlib):
+
+<ul>
+<li><a href="http://github.com/erlang/otp/commit/162ec270ed3c9a2a1aa8469b61525f3f184a4057">update the documentation on preprocessor in the reference manual</a></li>
+<li><a href="http://github.com/erlang/otp/commit/8dcc9f8f1c2949d5d6d820294b3584c097c932e3">epp: change rules to choose the right version of a macro</a></li>
+<li><a href="http://github.com/erlang/otp/commit/f7a89593e50a5be9e73b954109a4009ff07b4878">epp: Add support of macros overloading</a></li>
+<li><a href="http://github.com/erlang/otp/commit/52543e06781ef0e9676f75636d0d069c1a813664">epp: fix bug in the function scan_undef</a></li>
+</ul>
+<p>Extend the pre-processor to allow overloading of macros with
+the same name but different arities. Now with documentation.
+
+<p>
+</li>
+<li><a href="http://github.com/erlang/otp/commit/a03d4d1c02a01f1cfcd74e014e7fadefee37774b">tc/premodern-fpe</a> (erts):
+
+<ul>
+<li><a href="http://github.com/erlang/otp/commit/ea2fae6ec13472ab1521a7e1b07d5ceabb39db38">Add -D_XOPEN_SOURCE to CPPFLAGS on Darwin platforms</a></li>
+<li><a href="http://github.com/erlang/otp/commit/b95cf9282be56d6c4455d29dc54d3ee5be19f72d">Test for reliable fpes on Darwin platforms without DARWIN_MODERN_MCONTEXT</a></li>
+</ul>
+<p>
+<font color="red">This topic branch introduces 4 lines with whitespace errors.</font>
+<p>Reliable floating point exceptions is necessary for hipe to
+be enabled. I can confirm that hipe can now be enabled on
+Snow Leopard (10.6) and that it speeds up building of the
+Dialyzer PLT.
+
+<p>This branch depends on functionality that is deprecated
+in Mac OS 10.6, so it might be necessary to find another solution
+when 10.7 will be released (in case it removes the deprecated
+functionality).
+
+<p>We would like to hear about how this patch works on older versions
+of Mac OS X. It is known to work on Tiger/PPC.
+
+</li>
+<li><a href="http://github.com/erlang/otp/commit/c8180ae90b5905337b2555be12b864c75619f4a1">sc/sctp_connect_enhancement</a> (erts, kernel):
+
+<ul>
+<li><a href="http://github.com/erlang/otp/commit/92f3ceea0fa51df308f6f2689ff82857b6442c30">Implement a non-blocking gen_sctp:connect</a></li>
+<li><a href="http://github.com/erlang/otp/commit/2666b68aab2167266f49b462e3ed63e6f2045709">Correctly type sctp_assoc_id as signed, not unsigned</a></li>
+</ul>
+<p>Raimo (the maintainer of the sctp code in OTP) is quite busy
+with the new erlang.org site (demo.erlang.org), so there might
+be a while before he will look at this branch, but it will
+definitely happen before the next release.
+
+<p>
+</li>
+<li><a href="http://github.com/erlang/otp/commit/69bc4b8bdec3a58429ba1bdf236b7e1e527ae358">sc/ssl_pkix_extensions</a> (ssl):
+
+<ul>
+<li><a href="http://github.com/erlang/otp/commit/31ccb1da34026f567f7e4a8b2ac282ab4782c96e">Fix crash when decoding commercial certificates</a></li>
+</ul>
+<p>The pkix stuff is in the ssl application is deprecated and has
+been replaced with public key application. That functionality
+in public_key is also documented.
+
+<p>It seems unlikely that we will include this branch in OTP, but we will
+keep it in 'pu' for a little while longer.
+
+<p>
+</li>
+<li><a href="http://github.com/erlang/otp/commit/406fc411df4615ba2a5a1156dcc50a053011cf96">bg/otp_build-improvements</a> (otp, stdlib):
+
+<ul>
+<li><a href="http://github.com/erlang/otp/commit/6840b329c237bfaf084f6df9f6abe4e819890c0f">Support updating the primary bootstrap in a git repository</a></li>
+<li><a href="http://github.com/erlang/otp/commit/5770b7bc8bbe3eb5aecd42b8ac32f046be92ba21">Determine which VCS is being used</a></li>
+<li><a href="http://github.com/erlang/otp/commit/b197d921e48177a9a2545be4577922c0d41e0aaa">stdlib makefile: Add explicit rule</a></li>
+</ul>
+<p></li>
+<li><a href="http://github.com/erlang/otp/commit/d6430ae687e5f0097df0729cad3e715f74190687">at/odbc_osx_fix</a> (odbc):
+
+<ul>
+<li><a href="http://github.com/erlang/otp/commit/88c71c95d23afc3d185d64b050cb5fba243d4cee">Workaround broken ODBC implementation on OSX 10.5</a></li>
+</ul>
+<p></li>
+<li><a href="http://github.com/erlang/otp/commit/82c1a3b9e6c6eb975ea81fe227c0dea39c4fa217">db/tv_nthtail_fix</a> (tv):
+
+<ul>
+<li><a href="http://github.com/erlang/otp/commit/bfc18a8e3dd21e8961eb6657ae5f00cf6ebdf57d">Fix for tv which restarts while trying to open a table</a></li>
+</ul>
+<p>
+<font color="red">This topic branch introduces 6 lines with whitespace errors.</font>
+<p>We will cook this topic for a while and include it in the next
+release unless someone finds a problem with it or a better fix.
+
+<p>
+</li>
+<li><a href="http://github.com/erlang/otp/commit/cc1bdd502d6dc2ec513a7285f03883894cc2dff7">bd/http_chunk_fix</a> (inets):
+
+<ul>
+<li><a href="http://github.com/erlang/otp/commit/c2553beb7e6090cf9b0f4d662a99717c25221e1c">http_chunk data handling/passing improvement.</a></li>
+</ul>
+<p></li>
+<li><a href="http://github.com/erlang/otp/commit/7a6d773c9d471c1c98df1d40ad8af3c13aa3852d">po/odbc-update-delete-no-rows</a> (odbc):
+
+<ul>
+<li><a href="http://github.com/erlang/otp/commit/1a564f84da39a309e40353ae52f2bb4366268a1e">SQL_NO_DATA and SQLSTATE 00000 indicate success for updates/deletes that affect no rows</a></li>
+</ul>
+<p></li>
+</ul>
+</body>
+</html>
