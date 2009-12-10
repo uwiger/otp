@@ -24,7 +24,7 @@ kernel_libs="kernel32.lib advapi32.lib"
 gdi_libs="gdi32.lib user32.lib comctl32.lib comdlg32.lib shell32.lib"
 DEFAULT_LIBRARIES="$kernel_libs $gdi_libs"
 
-CMD=""
+CMD=" /LARGEADDRESSAWARE "
 STDLIB=MSVCRT.LIB
 DEBUG_BUILD=false
 STDLIB_FORCED=false
@@ -111,7 +111,6 @@ esac
     linktype="-debug $linkadd_pdb"
 
 CHMOD_FILE=""
-
 if [ $BUILD_DLL = true ];then
     case "$OUTPUT_FILENAME" in
 	*.exe|*.EXE)
