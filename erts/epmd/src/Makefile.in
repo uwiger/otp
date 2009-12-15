@@ -18,6 +18,7 @@
 #
 include $(ERL_TOP)/make/target.mk
 
+CC_IS_GCC=@CC_IS_GCC@
 
 ifeq ($(TYPE),debug)
 PURIFY     =

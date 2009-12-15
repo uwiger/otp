@@ -19,6 +19,8 @@
 
 include $(ERL_TOP)/make/target.mk
 
+CC_IS_GCC=@CC_IS_GCC@
+
 ERTS_LIB_TYPEMARKER=.$(TYPE)
 
 USING_MINGW=@MIXED_CYGWIN_MINGW@
