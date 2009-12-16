@@ -260,14 +260,17 @@ transform(#'Extension'{extnID = ExtnID} = Ext, ssl) ->
     NewExtID = ssl_pkix_oid:id2atom(ExtnID),
     ExtAny = setelement(1, Ext, 'Extension-Any'),
     {ok, AnyEnc} = 'OTP-PKIX':encode('Extension-Any', ExtAny),
-    {ok, ExtCd} =  'OTP-PKIX':decode('SSLExtension', list_to_binary(AnyEnc)),
-    
-    ExtValue = transform_extension_value(NewExtID, 
-					 ExtCd#'SSLExtension'.extnValue,
-					 ssl),
-    #'Extension'{extnID = NewExtID,
-		 critical = ExtCd#'SSLExtension'.critical,
-		 extnValue = ExtValue};
+    case catch 'OTP-PKIX':decode('SSLExtension', list_to_binary(AnyEnc)) of
+	{ok, ExtCd}  ->
+	    ExtValue = transform_extension_value(NewExtID,
+						 ExtCd#'SSLExtension'.extnValue,
+						 ssl),
+	    #'Extension'{extnID = NewExtID,
+			 critical = ExtCd#'SSLExtension'.critical,
+			 extnValue = ExtValue};
+	_ ->
+	    Ext#'Extension'{extnID = NewExtID}
+    end;
 
 transform(#'Extension'{extnID = ExtnID, extnValue = ExtnValue} = Ext, pkix) -> 
     NewExtID = ssl_pkix_oid:id2atom(ExtnID),
