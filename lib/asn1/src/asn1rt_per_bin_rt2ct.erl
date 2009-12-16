@@ -210,20 +210,24 @@ getoptionals2(Bytes,NumOpt) ->
 %% Bin = bitstring(),
 %% Rest = bitstring()
 getbits_as_binary(Num,Bytes) when is_bitstring(Bytes) ->
+    check_bit_size(Bytes,Num),
     <<BS:Num/bitstring,Rest/bitstring>> = Bytes,
     {BS,Rest}.
     
 getbits_as_list(Num,Bytes) when is_bitstring(Bytes) ->
+    check_bit_size(Bytes,Num),
     <<BitStr:Num/bitstring,Rest/bitstring>> = Bytes,
     {[ B || <<B:1>> <= BitStr],Rest}.
 
-
+getbit(<<>>) ->
+    throw({error,incomplete});
 getbit(Buffer) ->
     <<B:1,Rest/bitstring>> = Buffer,
     {B,Rest}.
 
 
 getbits(Buffer,Num) when is_bitstring(Buffer) ->
+    check_bit_size(Buffer,Num),
     <<Bs:Num,Rest/bitstring>> = Buffer,
     {Bs,Rest}.
 
@@ -237,11 +241,14 @@ align(BitStr) when is_bitstring(BitStr) ->
 
 %% First align buffer, then pick the first Num octets.
 %% Returns octets as an integer with bit significance as in buffer.
+
 getoctets(Buffer,Num) when is_binary(Buffer) ->
+    check_bin_size(Buffer,Num),
     <<Val:Num/integer-unit:8,RestBin/binary>> = Buffer,
     {Val,RestBin};
 getoctets(Buffer,Num) when is_bitstring(Buffer) ->
     AlignBits = bit_size(Buffer) rem 8,
+    check_bit_size(Buffer,Num*8+AlignBits),
     <<_:AlignBits,Val:Num/integer-unit:8,RestBin/binary>> = Buffer,
     {Val,RestBin}.
 
@@ -249,10 +256,12 @@ getoctets(Buffer,Num) when is_bitstring(Buffer) ->
 %% First align buffer, then pick the first Num octets.
 %% Returns octets as a binary
 getoctets_as_bin(Bin,Num) when is_binary(Bin) ->
+    check_bin_size(Bin,Num),
     <<Octets:Num/binary,RestBin/binary>> = Bin,
     {Octets,RestBin};
 getoctets_as_bin(Bin,Num) when is_bitstring(Bin) ->
     AlignBits = bit_size(Bin) rem 8,
+    check_bit_size(Bin,AlignBits+Num*8),
     <<_:AlignBits,Val:Num/binary,RestBin/binary>> = Bin,
     {Val,RestBin}.
     
@@ -336,6 +345,7 @@ decode_fragmented_bits(<<0:1,0:7,Bin/binary>>,C,Acc) ->
 	    exit({error,{asn1,{illegal_value,C,BinBits}}})
     end;
 decode_fragmented_bits(<<0:1,Len:7,Bin/binary>>,C,Acc) ->
+    check_bit_size(Bin,Len),
     <<Value:Len/bitstring,Rest/bitstring>> = Bin,
     BinBits = erlang:list_to_bitstring([Value|Acc]),
     case C of
@@ -349,6 +359,8 @@ decode_fragmented_bits(<<0:1,Len:7,Bin/binary>>,C,Acc) ->
 decode_fragmented_octets(Bin,C) ->
     decode_fragmented_octets(Bin,C,[]).
 
+decode_fragmented_octets(<<>>,_C,_Acc) ->
+    throw({error,incomplete});
 decode_fragmented_octets(<<3:2,Len:6,Bin/binary>>,C,Acc) ->
     {Value,Bin2} = split_binary(Bin,Len * ?'16K'),
     decode_fragmented_octets(Bin2,C,[Value|Acc]);
@@ -744,8 +756,9 @@ dec_integer(Bin = <<0:1,_:7,_/binary>>) ->
 dec_integer(<<_:1,B:7,BitStr/bitstring>>) ->
     Size = bit_size(BitStr),
     <<I:Size>> = BitStr,
-    (-128 + B) bsl bit_size(BitStr) bor I.
-
+    (-128 + B) bsl bit_size(BitStr) bor I;
+dec_integer(Bin) when bit_size(Bin) < 8 ->
+    throw({error,incomplete}).
     
     
 decpint(Bin) ->
@@ -811,13 +824,17 @@ decode_length(Buffer) ->
 
 decode_length(Buffer,undefined)  -> % un-constrained
     case align(Buffer) of
+	<<>> ->
+	    throw({error,incomplete});
 	<<0:1,Oct:7,Rest/binary>> ->
 	    {Oct,Rest};
 	<<2:2,Val:14,Rest/binary>> ->
 	    {Val,Rest};
 	<<3:2,_Val:14,_Rest/binary>> ->
 	    %% this case should be fixed
-	    exit({error,{asn1,{decode_length,{nyi,above_16k}}}})
+	    exit({error,{asn1,{decode_length,{nyi,above_16k}}}});
+	<<1:1,_:7>> ->
+	    throw({error,incomplete})
     end;
 
 decode_length(Buffer,{Lb,Ub}) when Ub =< 65535 ,Lb >= 0 -> % constrained
@@ -837,6 +854,7 @@ decode_length(Buffer,{{Lb,Ub},Ext}) when is_list(Ext) ->
 % X.691:10.9.3.5 
 decode_length(Bin,{_,_Lb,_Ub}) -> % Unconstrained or large Ub NOTE! this case does not cover case when Ub > 65535
     case Bin of
+	<<>> -> throw({error,incomplete});
 	<<0:1,Val:7,Rest/bitstring>> -> 
 	    {Val,Rest};
 	_ ->
@@ -844,7 +862,9 @@ decode_length(Bin,{_,_Lb,_Ub}) -> % Unconstrained or large Ub NOTE! this case do
 		<<2:2,Val:14,Rest/binary>> -> 
 		    {Val,Rest};
 		<<3:2,_:14,_Rest/binary>> -> 
-		    exit({error,{asn1,{decode_length,{nyi,length_above_64K}}}})
+		    exit({error,{asn1,{decode_length,{nyi,length_above_64K}}}});
+		<<1:1,_:7>> ->
+		    throw({error,incomplete})
 	    end
     end;
 decode_length(Buffer,SingleValue) when is_integer(SingleValue) ->
@@ -1883,3 +1903,17 @@ octets_unused_to_complete(Unused,Len,Val) when Len < 256 ->
     [30,Unused,Len,Val];
 octets_unused_to_complete(Unused,Len,Val) ->
     [31,Unused,<<Len:16>>,Val].
+
+check_bin_size(Binary,ExpectedSize) ->
+    case size(Binary) of
+	Size when Size < ExpectedSize ->
+	    throw({error,incomplete});
+	_ -> ok
+    end.
+
+check_bit_size(BitString,ExpectedSize) ->
+    case bit_size(BitString) of
+	BitSize when BitSize < ExpectedSize ->
+	    throw({error,incomplete});
+	_ -> ok
+    end.

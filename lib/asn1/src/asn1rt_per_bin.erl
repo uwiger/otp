@@ -241,6 +241,7 @@ getbits_as_binary(Num,{0,Bin}) when Num > 16 ->
     Used = Num rem 8,
     Pad = (8 - Used) rem 8,
 %    Nbytes = Num div 8,
+    check_bit_size(Bin,Num+Pad),
     <<Bits:Num,_:Pad,RestBin/binary>> = Bin,
     {{Pad,<<Bits:Num,0:Pad>>},RestBin};
 getbits_as_binary(Num,Buffer={_Used,_Bin}) -> % Unaligned buffer
@@ -268,23 +269,27 @@ getbits_as_list(0, B, Acc) ->
 %% If first byte in buffer is full and at least one byte will be picked,
 %% then pick one byte.
 getbits_as_list(N,{0,Bin},Acc) when N >= 8 ->
+    check_bin_size(Bin,1),
     <<B7:1,B6:1,B5:1,B4:1,B3:1,B2:1,B1:1,B0:1,Rest/binary>> = Bin,
     getbits_as_list(N-8,{0,Rest},[B0,B1,B2,B3,B4,B5,B6,B7|Acc]);
 getbits_as_list(N,{Used,Bin},Acc) when N >= 4, Used =< 4 ->
     NewUsed = Used + 4,
     Rem = 8 - NewUsed,
+    check_bit_size(Bin,Used+4+Rem),
     <<_:Used,B3:1,B2:1,B1:1,B0:1,_:Rem, Rest/binary>> = Bin,
     NewRest = case Rem of 0 -> Rest; _ -> Bin end,
     getbits_as_list(N-4,{NewUsed rem 8,NewRest},[B0,B1,B2,B3|Acc]);
 getbits_as_list(N,{Used,Bin},Acc) when N >= 2, Used =< 6  ->
     NewUsed = Used + 2,
     Rem = 8 - NewUsed,
+    check_bit_size(Bin,Used+2+Rem),
     <<_:Used,B1:1,B0:1,_:Rem, Rest/binary>> = Bin,
     NewRest = case Rem of 0 -> Rest; _ -> Bin end,
     getbits_as_list(N-2,{NewUsed rem 8,NewRest},[B0,B1|Acc]);
 getbits_as_list(N,{Used,Bin},Acc) when Used =< 7 ->
     NewUsed = Used + 1,
     Rem = 8 - NewUsed,
+    check_bit_size(Bin,Used+1+Rem),
     <<_:Used,B0:1,_:Rem, Rest/binary>> = Bin,
     NewRest = case Rem of 0 -> Rest; _ -> Bin end,
     getbits_as_list(N-1,{NewUsed rem 8,NewRest},[B0|Acc]).
@@ -296,6 +301,7 @@ getbit({0,Buffer = <<B:1,_:7,_/binary>>}) ->
     {B,{1,Buffer}};
 getbit({Used,Buffer}) ->
     Unused = (8 - Used) - 1,
+    check_bit_size(Buffer,Used+1+Unused),
     <<_:Used,B:1,_:Unused,_/binary>> = Buffer,
     {B,{Used+1,Buffer}};
 getbit(Buffer) when is_binary(Buffer) ->
@@ -303,6 +309,7 @@ getbit(Buffer) when is_binary(Buffer) ->
 
 
 getbits({0,Buffer},Num) when (Num rem 8) == 0 ->
+    check_bit_size(Buffer,Num),
     <<Bits:Num,Rest/binary>> = Buffer,
     {Bits,{0,Rest}};
 getbits({Used,Bin},Num) ->
@@ -311,10 +318,12 @@ getbits({Used,Bin},Num) ->
     Unused = (8-NewUsed) rem 8,
     case Unused of
 	0 ->
+	    check_bit_size(Bin,Used+Num),
 	    <<_:Used,Bits:Num,Rest/binary>> = Bin,
 	    {Bits,{0,Rest}};
 	_ ->
 	    Bytes = NumPlusUsed div 8,
+	    check_bit_size(Bin,Used+Num+Unused),
 	    <<_:Used,Bits:Num,_UBits:Unused,_/binary>> = Bin,
 	    <<_:Bytes/binary,Rest/binary>> = Bin,
 	    {Bits,{NewUsed,Rest}}
@@ -345,10 +354,13 @@ align(Bytes) ->
 %% First align buffer, then pick the first Num octets.
 %% Returns octets as an integer with bit significance as in buffer.
 getoctets({0,Buffer},Num) ->
+    check_bin_size(Buffer,Num),
     <<Val:Num/integer-unit:8,RestBin/binary>> = Buffer,
     {Val,{0,RestBin}};
 getoctets({U,<<_Padding,Rest/binary>>},Num) when U /= 0 ->
     getoctets({0,Rest},Num);
+getoctets({_U,<<>>},_Num) ->
+    throw({error,incomplete});
 getoctets(Buffer,Num) when is_binary(Buffer) ->
     getoctets({0,Buffer},Num).
 % getoctets(Buffer,Num) ->
@@ -373,9 +385,11 @@ getoctets(Buffer,Num) when is_binary(Buffer) ->
 %% First align buffer, then pick the first Num octets.
 %% Returns octets as a binary
 getoctets_as_bin({0,Bin},Num)->
+    check_bin_size(Bin,Num),
     <<Octets:Num/binary,RestBin/binary>> = Bin,
     {Octets,{0,RestBin}};
 getoctets_as_bin({_U,Bin},Num) ->
+    check_bin_size(Bin,1+Num),
     <<_Padding,Octets:Num/binary,RestBin/binary>> = Bin,
     {Octets,{0,RestBin}};
 getoctets_as_bin(Bin,Num) when is_binary(Bin) ->
@@ -440,7 +454,9 @@ set_choice_tag(_Alt,[],_Tag) ->
 decode_fragmented_bits({0,Buffer},C) ->
     decode_fragmented_bits(Buffer,C,[]);
 decode_fragmented_bits({_N,<<_,Bs/binary>>},C) ->
-    decode_fragmented_bits(Bs,C,[]).
+    decode_fragmented_bits(Bs,C,[]);
+decode_fragmented_bits({_N,<<>>},_C) ->
+    throw({error,incomplete}).
 
 decode_fragmented_bits(<<3:2,Len:6,Bin/binary>>,C,Acc) ->
     {Value,Bin2} = split_binary(Bin, Len * ?'16K'),
@@ -456,12 +472,14 @@ decode_fragmented_bits(<<0:1,0:7,Bin/binary>>,C,Acc) ->
 decode_fragmented_bits(<<0:1,Len:7,Bin/binary>>,C,Acc) ->
     Result = {BinBits,{Used,_Rest}} =
 	case (Len rem 8) of
-	    0 -> 
+	    0 ->
+		check_bit_size(Bin,Len),
 		<<Value:Len/binary-unit:1,Bin2/binary>> = Bin,
 		{list_to_binary(lists:reverse([Value|Acc])),{0,Bin2}};
 	    Rem ->
 		Bytes = Len div 8,
 		U = 8 - Rem,
+		check_bit_size(Bin,Bytes*8+Rem+U),
 		<<Value:Bytes/binary-unit:8,Bits1:Rem,Bits2:U,Bin2/binary>> = Bin,
 		{list_to_binary(lists:reverse([Bits1 bsl U,Value|Acc])),
 		 {Rem,<<Bits2,Bin2/binary>>}}
@@ -471,7 +489,9 @@ decode_fragmented_bits(<<0:1,Len:7,Bin/binary>>,C,Acc) ->
 	    Result;
 	Int when is_integer(Int) ->
 	    exit({error,{asn1,{illegal_value,C,BinBits}}})
-    end.
+    end;
+decode_fragmented_bits(<<>>,_C,_Acc) ->
+    throw({error,incomplete}).
 
 
 decode_fragmented_octets({0,Bin},C) ->
@@ -489,6 +509,7 @@ decode_fragmented_octets(<<0:1,0:7,Bin/binary>>,C,Acc) ->
 	    exit({error,{asn1,{illegal_value,C,Octets}}})
     end;
 decode_fragmented_octets(<<0:1,Len:7,Bin/binary>>,C,Acc) ->
+    check_bin_size(Bin,Len),
     <<Value:Len/binary-unit:8,Bin2/binary>> = Bin,
     BinOctets = list_to_binary(lists:reverse([Value|Acc])),
     case C of
@@ -496,7 +517,9 @@ decode_fragmented_octets(<<0:1,Len:7,Bin/binary>>,C,Acc) ->
 	    {BinOctets,Bin2};
 	Int when is_integer(Int) ->
 	    exit({error,{asn1,{illegal_value,C,BinOctets}}})
-    end.
+    end;
+decode_fragmented_octets(<<>>,_,_) ->
+    throw({error,incomplete}).
 
 
     
@@ -892,8 +915,12 @@ decode_length(Buffer) ->
 decode_length(Buffer,undefined)  -> % un-constrained
     {0,Buffer2} = align(Buffer),
     case Buffer2 of
+	Bin when size(Bin) < 1 ->
+	    throw({error,incomplete});
 	<<0:1,Oct:7,Rest/binary>> ->
 	    {Oct,{0,Rest}};
+	<<1:1,Rest/bitstring>> when bit_size(Rest) < 15->
+	    throw({error, incomplete});
 	<<2:2,Val:14,Rest/binary>> ->
 	    {Val,{0,Rest}};
 	<<3:2,_:14,_Rest/binary>> ->
@@ -932,12 +959,17 @@ decode_length(Buffer,{VR={_Lb,_Ub},Ext}) when is_list(Ext) ->
 decode_length({Used,Bin},{_,_Lb,_Ub}) -> %when Len =< 127 -> % Unconstrained or large Ub NOTE! this case does not cover case when Ub > 65535
     Unused = (8-Used) rem 8,
     case Bin of
+	
 	<<_:Used,0:1,Val:7,R:Unused,Rest/binary>> -> 
 	    {Val,{Used,<<R,Rest/binary>>}};
+	Bin when bit_size(Bin) < (8+Used+Unused) ->
+	    throw({error,incomplete});
 	<<_:Used,_:Unused,2:2,Val:14,Rest/binary>> -> 
 	    {Val, {0,Rest}};
 	<<_:Used,_:Unused,3:2,_:14,_Rest/binary>> -> 
-	    exit({error,{asn1,{decode_length,{nyi,length_above_64K}}}})
+	    exit({error,{asn1,{decode_length,{nyi,length_above_64K}}}});
+	<<_Used,_:Unused,1:1,_:7,Rest/binary>> when bit_size(Rest) < 8 ->
+	    throw({error,incomplete})
     end;
 % decode_length(Buffer,{_,_Lb,Ub}) -> %when Len =< 127 -> % Unconstrained or large Ub
 %     case getbit(Buffer) of
@@ -2280,8 +2312,18 @@ complete_bytes([]) ->
 % complete_bytes2([{V8,B8},{V7,B7},{V6,B6},{V5,B5},{V4,B4},{V3,B3},{V2,B2},{V1,B1}],PadBits) ->
 %     <<V1:B1,V2:B2,V3:B3,V4:B4,V5:B5,V6:B6,V7:B7,V8:B8,0:PadBits>>.
 
-    
-    
+check_bin_size(Binary,ExpectedSize) ->
+    case size(Binary) of
+	Size when Size < ExpectedSize ->
+	    throw({error,incomplete});
+	_ -> ok
+    end.
+check_bit_size(BitString,ExpectedSize) ->
+    case bit_size(BitString) of
+	BitSize when BitSize < ExpectedSize ->
+	    throw({error,incomplete});
+	_ -> ok
+    end.
     
 
 

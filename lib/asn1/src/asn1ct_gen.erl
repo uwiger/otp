@@ -983,16 +983,26 @@ pgen_dispatcher(Erules,_Module,{Types,_Values,_,_,_Objects,_ObjectSets}) ->
     DecAnonymous =
 	case {Erules,Return_rest} of
 	    {ber_bin_v2,false} ->
-		io_lib:format("~s~s~s~n",
-			      ["element(1,?RT_BER:decode(Data",
-			       driver_parameter(),"))"]);
+		emit(["case catch ?RT_BER:decode(Data",
+			       driver_parameter(),") of",nl,
+		      "  {error,incomplete} ->",nl,
+		      "    {error,incomplete};",nl,
+		      "  {Data,_Rest} ->",nl]),
+		"Data";
 	    {ber_bin_v2,true} ->
-		emit(["{Data,Rest} = ?RT_BER:decode(Data0",
-		      driver_parameter(),"),",nl]),
+		emit(["case catch ?RT_BER:decode(Data0",
+		      driver_parameter(),") of",nl,
+		      "  {error,incomplete} ->",nl,
+		      "    {error,incomplete};",nl,
+		      "  {Data,Rest} ->",nl]),
 		"Data";
 	    _ ->
 		"Data"
 	end,
+    Space = case Erules of
+		ber_bin_v2 -> "    ";
+		_ -> ""
+	    end,
     DecWrap = case Erules of
 		  ber -> "wrap_decode(Data)";
 		  ber_bin_v2 ->
@@ -1001,18 +1011,23 @@ pgen_dispatcher(Erules,_Module,{Types,_Values,_,_,_Objects,_ObjectSets}) ->
 		  _ -> "Data"
 	      end,
 	    
-    emit(["case catch decode_disp(Type,",DecWrap,") of",nl,
-	  "  {'EXIT',{error,Reason}} ->",nl,
-	  "    {error,Reason};",nl,
-	  "  {'EXIT',Reason} ->",nl,
-	  "    {error,{asn1,Reason}};",nl]),
+    emit([Space,"case catch decode_disp(Type,",DecWrap,") of",nl,
+	  Space,"  {error,incomplete} ->",nl,
+	  Space,"    {error,incomplete};",nl,
+	  Space,"  {'EXIT',{error,Reason}} ->",nl,
+	  Space,"    {error,Reason};",nl,
+	  Space,"  {'EXIT',Reason} ->",nl,
+	  Space,"    {error,{asn1,Reason}};",nl]),
+    
     case {Erules,Return_rest} of 
 	{ber_bin_v2,false} ->
-	    emit(["  Result ->",nl,
-		  "    {ok,Result}",nl]);
+	    emit([Space,"  Result ->",nl,
+		  Space,"    {ok,Result}",nl,
+		  Space,"end",nl]);
 	{ber_bin_v2,true} ->
-	    emit(["  Result ->",nl,
-		  "    {ok,Result,Rest}",nl]);
+	    emit([Space,"  Result ->",nl,
+		  Space,"    {ok,Result,Rest}",nl,
+		  Space,"end",nl]);
 	{per,false} ->
 	    emit(["  {X,_Rest} ->",nl,
 		  "    {ok,if_binary2list(X)};",nl,
