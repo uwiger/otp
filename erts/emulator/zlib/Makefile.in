@@ -36,7 +36,7 @@ OBJS = $(O:%=$(OBJDIR)/%)
 
 include $(ERL_TOP)/make/target.mk
 
-CC_IS_GCC=@CC_IS_GCC@
+CC_NAME=@CC_NAME@
 
 # On windows we need a separate zlib during debug build
 ifeq ($(TARGET),win32)

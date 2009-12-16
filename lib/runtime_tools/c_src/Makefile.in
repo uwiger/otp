@@ -25,7 +25,7 @@ include $(ERL_TOP)/make/$(TARGET)/otp.mk
 include ../vsn.mk
 VSN=$(RUNTIME_TOOLS_VSN)
 
-CC_IS_GCC=@CC_IS_GCC@
+CC_NAME=@CC_NAME@
 
 # ----------------------------------------------------
 # The following variables differ on different systems, we set

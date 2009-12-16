@@ -19,7 +19,7 @@
 
 include $(ERL_TOP)/make/target.mk
 
-CC_IS_GCC=@CC_IS_GCC@
+CC_NAME=@CC_NAME@
 
 ERTS_LIB_TYPEMARKER=.$(TYPE)
 

@@ -20,7 +20,7 @@
 include $(ERL_TOP)/make/target.mk
 include $(ERL_TOP)/make/$(TARGET)/otp.mk
 
-CC_IS_GCC=@CC_IS_GCC@
+CC_NAME=@CC_NAME@
 
 CXX = @CXX@
 CC = @CC@

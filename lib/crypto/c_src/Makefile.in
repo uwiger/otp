@@ -26,7 +26,7 @@ include $(ERL_TOP)/make/$(TARGET)/otp_ded.mk
 include ../vsn.mk
 VSN=$(CRYPTO_VSN)
 
-CC_IS_GCC=@CC_IS_GCC@
+CC_NAME=@CC_NAME@
 
 # ----------------------------------------------------
 # The following variables differ between systems.

@@ -21,7 +21,7 @@ include vsn.mk
 
 # ----------------------------------------------------------------------
 
-CC_IS_GCC=@CC_IS_GCC@
+CC_NAME=@CC_NAME@
 
 # Other erts dirs than the emulator dir...
 ERTSDIRS = doc/src etc epmd lib_src

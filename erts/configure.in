@@ -326,9 +326,9 @@ dnl ----------------------------------------------------------------------
 
 AC_PROG_CC
 if test "x$GCC" = "xyes"; then
-	AC_SUBST(CC_IS_GCC, ["yes"])
+	AC_SUBST(CC_NAME, ["GCC"])
 else
-	AC_SUBST(CC_IS_GCC, ["no"])
+	AC_SUBST(CC_NAME)
 fi
 
 dnl ---------------------------------------------------------------------
