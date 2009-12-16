@@ -144,7 +144,7 @@ init2(CallingPid, Mode, SFile, GS) ->
 
 		    win     = Win,
 		    focus   = undefined,
-		    coords  = {0,0},
+		    coords  = {20,20},
 
 		    intdir  = element(2, file:get_cwd()),
 		    pinfos  = [],
@@ -442,8 +442,7 @@ gui_cmd('Back Trace Size...', State) ->
 
 %% Help Menu
 gui_cmd('Debugger', State) ->
-    HelpFile = filename:join([code:lib_dir(debugger),
-			      "doc", "html", "part_frame.html"]),
+    HelpFile = filename:join([code:lib_dir(debugger), "doc", "html", "index.html"]),
     Window = dbg_wx_mon_win:get_window(State#state.win),
     dbg_wx_win:open_help(Window, HelpFile),
     State;
