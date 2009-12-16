@@ -198,6 +198,58 @@ int _finite(double x);
 #define SIZEOF_SIZE_T  4
 #define SIZEOF_OFF_T   4
 
+#if EMULATE_MMAP_WIN32
+
+#	if defined(HAVE_MMAP)
+#		undef  HAVE_MMAP
+#		define HAVE_MMAP		1
+#	endif
+
+#	if defined(ERTS_MSEG_FAKE_SEGMENTS)
+#		undef ERTS_MSEG_FAKE_SEGMENTS
+#	endif
+
+#	if defined(CAN_PARTLY_DESTROY)
+#		undef CAN_PARTLY_DESTROY
+#		define CAN_PARTLY_DESTROY 1
+#	endif
+
+#	define MAP_FAILED		0
+#	define MREMAP_FIXED		2  
+#	define PROT_READ		PAGE_READWRITE
+#	define PROT_WRITE		PAGE_READWRITE
+#	define MAP_ANONYMOUS	MEM_RESERVE
+#	define MAP_ANON			MEM_RESERVE
+#	define MAP_PRIVATE		MEM_COMMIT
+#	define MAP_SHARED		MEM_RESERVE   // value of this #define is 100% arbitrary
+
+
+	extern void *mmap (void *ptr, long size, long prot, long type, long handle, long arg);
+	extern long munmap (void *ptr, long size);
+	extern long getregionsize (void); 
+
+#	ifndef HAVE_GETPAGESIZE
+#		define HAVE_GETPAGESIZE 1
+#		define GET_PAGE_SIZE (size_t) getregionsize(); 
+#	endif
+
+#else // EMULATE_MMAP_WIN32
+#	if defined(HAVE_MMAP)
+#		undef  HAVE_MMAP
+#	endif
+
+#	ifndef ERTS_MSEG_FAKE_SEGMENTS
+#		define ERTS_MSEG_FAKE_SEGMENTS
+#	endif
+
+	extern long getpagesize (void);
+#	ifndef HAVE_GETPAGESIZE
+#		define HAVE_GETPAGESIZE 1
+#		define GET_PAGE_SIZE (size_t) getpagesize(); 
+#	endif
+#endif  // EMULATE_MMAP_WIN32
+
+
 /*
  * Seems to be missing.
  */

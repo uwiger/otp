@@ -49,6 +49,7 @@
 #define HAVE_GETPAGESIZE 0
 #endif
 
+#ifndef GET_PAGE_SIZE
 #ifdef _SC_PAGESIZE
 #  define GET_PAGE_SIZE sysconf(_SC_PAGESIZE)
 #elif HAVE_GETPAGESIZE
@@ -56,6 +57,7 @@
 #else
 #  error "Page size unknown"
      /* Implement some other way to get the real page size if needed! */
+#endif
 #endif
 
 #define MAX_CACHE_SIZE 30
@@ -102,7 +104,12 @@ static int mmap_fd;
 #  define HAVE_MSEG_RECREATE 0
 #endif
 
-#define CAN_PARTLY_DESTROY 1
+#ifdef EMULATE_MMAP_WIN32
+#	define CAN_PARTLY_DESTROY 0
+#else
+#	define CAN_PARTLY_DESTROY 1
+#endif
+
 #else  /* #if HAVE_MMAP */
 #define CAN_PARTLY_DESTROY 0
 #error "Not supported"
@@ -545,9 +552,13 @@ mseg_alloc(ErtsAlcType_t atype, Uint *size_p, const ErtsMsegOpt_t *opt)
     create_seg:
 	adjust_cache_size(0);
 	seg = mseg_create(size);
+	if (seg == (void *) MAP_FAILED)
+		seg = NULL;
 	if (!seg) {
 	    mseg_clear_cache();
 	    seg = mseg_create(size);
+		if (seg == (void *) MAP_FAILED)
+			seg = NULL;
 	    if (!seg)
 		size = 0;
 	}
