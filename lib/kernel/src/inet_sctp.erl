@@ -64,6 +64,14 @@ close(S) ->
 listen(S, Flag) ->
     prim_inet:listen(S, Flag).
 
+%% A non-blocking connect is implemented when the initial call to
+%% gen_sctp:connect has Timeout = 0. Then the application is
+%% responsible for receiving the #sctp_assoc_change{} message and
+%% correctly determining the connect it originated from (for
+%% example, by examining the remote host and/or port).
+%% The application should have at least {active, once} or be prepared
+%% to gen_sctp:recv the connect result.
+
 connect(S, Addr, Port, Opts, Timer) ->
     case prim_inet:chgopts(S, Opts) of
 	ok ->
@@ -71,9 +79,9 @@ connect(S, Addr, Port, Opts, Timer) ->
 		{ok,Active} ->
 		    Timeout = inet:timeout(Timer),
 		    case prim_inet:connect(S, Addr, Port, Timeout) of
-			ok ->
+			ok when Timeout /= 0 ->
 			    connect_get_assoc(S, Addr, Port, Active, Timer);
-			Err1 -> Err1
+			OkOrErr1 -> OkOrErr1
 		    end;
 		Err2 -> Err2
 	    end;
@@ -89,10 +97,10 @@ connect(S, Addr, Port, Opts, Timer) ->
 %% connect_get_assoc/5 below mistakes it for an invalid response
 %% for a socket in {active,false} or {active,once} modes.
 %%
-%% In {active,true} mode it probably gets right, but it is
-%% a blocking connect that is implemented even for {active,true},
-%% and that may be a shortcoming. A non-blocking connect
-%% would be nice to have.
+%% In {active,true} mode the window of time for the race is smaller,
+%% but it is possible and also it is a blocking connect that is
+%% implemented even for {active,true}, and that may be a
+%% shortcoming.
 
 connect_get_assoc(S, Addr, Port, false, Timer) ->
     case recv(S, inet:timeout(Timer)) of

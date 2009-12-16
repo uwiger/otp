@@ -1340,7 +1340,7 @@ type_value_2(binary_or_uint,Bin) when is_binary(Bin) -> true;
 type_value_2(binary_or_uint,Int) when is_integer(Int), Int >= 0 -> true;
 %% Type-checking of SCTP options
 type_value_2(sctp_assoc_id, X)
-  when X band 16#ffffffff =:= X                     -> true;
+  when is_integer(X), X >= -2147483648, X =< 2147483647 -> true;
 type_value_2(_, _)         -> false.
 
 

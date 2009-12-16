@@ -155,7 +155,7 @@
       </desc>
     </func>
     <func>
-      <name>connect(Socket, Addr, Port, [Opt], Timeout) -&gt; {ok, Assoc} | {error, posix()}</name>
+      <name>connect(Socket, Addr, Port, [Opt], Timeout) -&gt; ok | {ok, Assoc} | {error, posix()}</name>
       <fsummary>Establish a new association for the socket <c>Socket</c>, with a peer (SCTP server socket)</fsummary>
       <type>
         <v>Socket  = sctp_socket()</v>
@@ -185,6 +185,11 @@
         inbound_streams   = int(),
         assoc_id          = assoc_id()
   }        </pre>
+
+	If <c>Timeout</c> is 0, then the result of <c>connect/*</c> is
+	ok. The caller must receive or recv/* the sctp_assoc_change
+	message to determine the result of the connect call.
+
         <p>The number of outbound and inbound streams can be set by
           giving an <c>sctp_initmsg</c> option to <c>connect</c>
           as in:</p>
