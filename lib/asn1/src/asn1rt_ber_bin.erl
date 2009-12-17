@@ -150,6 +150,7 @@ decode_constructed(Bin) ->
 decode_tlv(Bin) ->
     {Tag,Bin1,_Rb1} = decode_tag(Bin),
     {{Len,Bin2},_Rb2} = decode_length(Bin1),
+    check_bin_size(Bin2,Len),
     <<V:Len/binary,Bin3/binary>> = Bin2,
     {{Tag,Len,V},Bin3}.
 
@@ -163,6 +164,7 @@ decode_tlv(Bin) ->
 split_list(List,indefinite) ->
     {List, indefinite};
 split_list(Bin, Len) when is_binary(Bin) ->
+    check_bin_size(Bin,Len),
     split_binary(Bin,Len);
 split_list(List,Len) ->
     {lists:sublist(List,Len),lists:nthtail(Len,List)}.
@@ -173,6 +175,8 @@ restbytes2(indefinite,<<0,0,RemBytes/binary>>,_) ->
     {RemBytes,2};
 restbytes2(indefinite,RemBytes,ext) ->
     skipvalue(indefinite,RemBytes);
+restbytes2(indefinite,Bin,_) when Bin=:=<<>> orelse Bin=:=<<0>> ->
+    throw({error,incomplete});
 restbytes2(RemBytes,<<>>,_) ->
     {RemBytes,0};
 restbytes2(_RemBytes,Bytes,noext) ->
@@ -208,6 +212,7 @@ skipvalue(indefinite, Bytes, Rb, IndefLevel) ->
 	{{0,0,0},0} ->
 	    skipvalue(indefinite,Bytes3,Rb+2,IndefLevel - 1);
 	_ ->
+	    check_bin_size(Bytes3,L),
 	    <<_:L/binary, RestBytes/binary>> = Bytes3,
 	    skipvalue(indefinite,RestBytes,Rb+R2+R3+L, IndefLevel)
 	    %%{RestBytes, R2+R3+L}
@@ -218,6 +223,7 @@ skipvalue(indefinite, Bytes, Rb, IndefLevel) ->
 %% 	_  -> skipvalue(indefinite,Bytes4,Rb+Rb4)
 %%     end;
 skipvalue(L, Bytes, Rb, _) ->
+    check_bin_size(Bytes,L),
 %    <<Skip:L/binary, RestBytes/binary>> = Bytes,
     <<_:L/binary, RestBytes/binary>> = Bytes,
     {RestBytes,Rb+L}.
@@ -325,7 +331,8 @@ encode_tag_val2(Tag, OctAck) ->
 %% interprets the first byte and possible  second, third and fourth byte as
 %% a tag and returns all the bytes comprising the tag, the constructed/primitive bit (6:th bit of first byte) is normalised to 0
 %%
-
+peek_tag(<<>>) ->
+    throw({error,incomplete});
 peek_tag(<<B7_6:2,_:1,31:5,Buffer/binary>>) ->
     Bin = peek_tag(Buffer, <<>>),
     <<B7_6:2,31:6,Bin/binary>>;
@@ -333,6 +340,8 @@ peek_tag(<<B7_6:2,_:1,31:5,Buffer/binary>>) ->
 peek_tag(<<B7_6:2,_:1,B4_0:5,_Buffer/binary>>) ->
     <<B7_6:2,B4_0:6>>.
 
+peek_tag(<<>>,_) ->
+    throw({error,incomplete});
 peek_tag(<<0:1,PartialTag:7,_Buffer/binary>>, TagAck) ->
     <<TagAck/binary,PartialTag>>;
 peek_tag(<<PartialTag,Buffer/binary>>, TagAck) ->
@@ -366,7 +375,9 @@ decode_tag(<<Class:2, Form:1, 31:5, Buffer/binary>>) ->
 
 %% single tag (< 31 tags)
 decode_tag(<<Class:2,Form:1,TagNo:5, Buffer/binary>>) ->
-    {{(Class bsl 6), (Form bsl 5), TagNo}, Buffer, 1}.
+    {{(Class bsl 6), (Form bsl 5), TagNo}, Buffer, 1};
+decode_tag(<<>>) ->
+    throw({error, incomplete}).
 
 %% last partial tag
 decode_tag(<<0:1,PartialTag:7, Buffer/binary>>, TagAck, RemovedBytes) ->
@@ -377,7 +388,9 @@ decode_tag(<<0:1,PartialTag:7, Buffer/binary>>, TagAck, RemovedBytes) ->
 decode_tag(<<_:1,PartialTag:7, Buffer/binary>>, TagAck, RemovedBytes) ->
     TagAck1 = (TagAck bsl 7) bor PartialTag,
     %%<<TagAck1:16>> = <<TagAck:1, PartialTag:7,0:8>>,
-    decode_tag(Buffer, TagAck1, RemovedBytes+1).
+    decode_tag(Buffer, TagAck1, RemovedBytes+1);
+decode_tag(<<>>,_TagAck,_RemovedBytes) ->
+    throw({error, incomplete}).
 
 %%------------------------------------------------------------------
 %% check_tags_i is the same as check_tags except that it stops and
@@ -560,6 +573,7 @@ decode_open_type(Bytes) ->
     {_Tag, Len, RemainingBuffer, RemovedBytes} = decode_tag_and_length(Bytes),
     {_RemainingBuffer2, RemovedBytes2} = skipvalue(Len, RemainingBuffer, RemovedBytes),
     N = RemovedBytes2,
+    check_bin_size(Bytes,N),
     <<Val:N/binary, RemainingBytes/binary>> = Bytes,
 %    {Val, RemainingBytes, Len + RemovedBytes}.
     {Val,RemainingBytes,N}.
@@ -579,12 +593,14 @@ decode_open_type(Bytes,ExplTag) ->
 	    {_RemainingBuffer2, RemovedBytes2} =
 		skipvalue(Len, RemainingBuffer),
 	    N = RemovedBytes2,
+	    check_bin_size(Bytes,RemovedBytes+N),
 	    <<_:RemovedBytes/unit:8,Val:N/binary,RemainingBytes/binary>> = Bytes,
 	    {Val, RemainingBytes, N + RemovedBytes};
 	_ ->
 	    {_RemainingBuffer2, RemovedBytes2} =
 		skipvalue(Len, RemainingBuffer, RemovedBytes),
 	    N = RemovedBytes2,
+	    check_bin_size(Bytes,N),
 	    <<Val:N/binary, RemainingBytes/binary>> = Bytes,
 	    {Val, RemainingBytes, N}
     end.
@@ -648,6 +664,8 @@ decode_boolean2(<<0:8, Buffer/binary>>, RemovedBytes) ->
     {false, Buffer, RemovedBytes + 1};
 decode_boolean2(<<_:8, Buffer/binary>>, RemovedBytes) ->
     {true, Buffer, RemovedBytes + 1};
+decode_boolean2(<<>>,_RemovedBytes) ->
+    throw({error,incomplete});
 decode_boolean2(Buffer, _) ->
     exit({error,{asn1, {decode_boolean, Buffer}}}).
 
@@ -1088,6 +1106,10 @@ decode_real_notag(Buffer, C, Tags, OptOrMand) ->
 decode_real2(Buffer, _C, 0, _RemBytes) ->
     {0,Buffer};
 decode_real2(Buffer0, _C, Len, RemBytes1) ->
+    case Buffer0 of
+	<<>> -> throw({error,incomplete});
+	_ -> ok
+    end,
     <<First, Buffer2/binary>> = Buffer0,
     if
 	First =:= 2#01000000 -> {'PLUS-INFINITY', Buffer2};
@@ -1095,6 +1117,7 @@ decode_real2(Buffer0, _C, Len, RemBytes1) ->
 %%	First =:= 2#00000000 -> {0, Buffer2};
 	First =:= 1 orelse First =:= 2 orelse First =:= 3 ->
 	    %% charcter string encoding of base 10
+	    check_bin_size(Buffer2,Len-1),
 	    {NRx,Rest} = split_binary(Buffer2,Len-1),
 	    {binary_to_list(NRx),Rest,Len};
 	true ->
@@ -1112,6 +1135,10 @@ decode_real2(Buffer0, _C, Len, RemBytes1) ->
 		    1 -> {3, decode_integer2(2, Buffer2, RemBytes1), RemBytes1+2};
 		    2 -> {4, decode_integer2(3, Buffer2, RemBytes1), RemBytes1+3};
 		    3 ->
+			case Buffer2 of
+			    <<>> -> throw({error,incomplete});
+			    _ -> ok
+			end,
 			<<ExpLen1,RestBuffer/binary>> = Buffer2,
 			{ ExpLen1 + 2,
 			  decode_integer2(ExpLen1, RestBuffer, RemBytes1),
@@ -1120,6 +1147,7 @@ decode_real2(Buffer0, _C, Len, RemBytes1) ->
 	    %%	    io:format("FirstLen: ~w, Exp: ~w, Buffer3: ~w ~n",
 
 	    Length = Len - FirstLen,
+	    check_bin_size(Buffer3,Length),
 	    <<LongInt:Length/unit:8,RestBuff/binary>> = Buffer3,
 	    {{Mantissa, Buffer4}, RemBytes3} =
 		if Sign =:= 0 ->
@@ -1478,7 +1506,10 @@ decode_bit_string2(Len,<<Unused,Buffer/binary>>,NamedNumberList,
 	    {decode_bitstring_NNL(BitString,NamedNumberList),
 	     BufferTail,
 	     RemovedBytes}
-    end.
+    end;
+
+decode_bit_string2(_Len, <<>>,_NamedNumberList,_RemovedBytes,_BinOrOl) ->
+    throw({error,incomplete}).
 
 %%----------------------------------------
 %% Decode the in buffer to bits
@@ -1488,7 +1519,9 @@ decode_bitstring2(1,Unused,<<B7:1,B6:1,B5:1,B4:1,B3:1,B2:1,B1:1,B0:1,_/binary>>)
 decode_bitstring2(Len, Unused,
 		  <<B7:1,B6:1,B5:1,B4:1,B3:1,B2:1,B1:1,B0:1,Buffer/binary>>) ->
     [B7, B6, B5, B4, B3, B2, B1, B0 |
-     decode_bitstring2(Len - 1, Unused, Buffer)].
+     decode_bitstring2(Len - 1, Unused, Buffer)];
+decode_bitstring2(_Len, _Unused,<<>>) ->
+    throw({error,incomplete}).
 
 %%decode_bitstring2(1, Unused, Buffer) ->
 %%    make_bits_of_int(hd(Buffer), 128, 8-Unused);
@@ -1706,7 +1739,9 @@ dec_subidentifiers(Buffer,_Av,Al,0) ->
 dec_subidentifiers(<<1:1,H:7,T/binary>>,Av,Al,Len) ->
     dec_subidentifiers(T,(Av bsl 7) + H,Al,Len-1);
 dec_subidentifiers(<<H,T/binary>>,Av,Al,Len) ->
-    dec_subidentifiers(T,0,[((Av bsl 7) + H)|Al],Len-1).
+    dec_subidentifiers(T,0,[((Av bsl 7) + H)|Al],Len-1);
+dec_subidentifiers(<<>>,_Av,_Al,_Len) ->
+    throw({error,incomplete}).
 
 %%============================================================================
 %% RELATIVE-OID, ITU_T X.690 Chapter 8.20
@@ -1913,14 +1948,17 @@ decode_restricted(Buffer, InnerLen, StringType, NamedNumberList,BinOrOld) ->
 	    decode_bit_string2(InnerLen,Buffer,NamedNumberList,InnerLen,BinOrOld);
 
 	?N_UniversalString ->
+	    check_bin_size(Buffer,InnerLen),
 	    <<PreBuff:InnerLen/binary,RestBuff/binary>> = Buffer,%%added for binary
 	    UniString = mk_universal_string(binary_to_list(PreBuff)),
 	    {UniString,RestBuff,InnerLen};
 	?N_BMPString ->
+	    check_bin_size(Buffer,InnerLen),
 	    <<PreBuff:InnerLen/binary,RestBuff/binary>> = Buffer,%%added for binary
 	    BMP = mk_BMP_string(binary_to_list(PreBuff)),
 	    {BMP,RestBuff,InnerLen};
 	_ ->
+	    check_bin_size(Buffer,InnerLen),
 	    <<PreBuff:InnerLen/binary,RestBuff/binary>> = Buffer,%%added for binary
 	    {PreBuff, RestBuff, InnerLen}
     end.
@@ -2007,6 +2045,7 @@ decode_UTF8_string_notag(Buffer, Tags, OptOrMand) ->
 	    {Buffer02, Rb02} = restbytes2(RestBytes,Buffer01,noext),
 	    {Val01, Buffer02, Rb0+Rb01+Rb02};
 	{_,Len} ->
+	    check_bin_size(Buffer0,Len),
 	    <<Result:Len/binary,RestBuff/binary>> = Buffer0,
 	    {Result,RestBuff,Rb0 + Len}
     end.
@@ -2093,6 +2132,7 @@ decode_generalized_time_notag(Buffer, Range, Tags, TotalLen, OptOrMand) ->
 	    {Buffer02, Rb02} = restbytes2(RestBytes,Buffer01,noext),
 	    {Val01, Buffer02, Rb0+Rb01+Rb02};
 	{_,Len} ->
+	    check_bin_size(Buffer0,Len),
 	    <<PreBuff:Len/binary,RestBuff/binary>> = Buffer0,
 	    {binary_to_list(PreBuff), RestBuff, Rb0+Len}
     end.
@@ -2133,6 +2173,7 @@ decode_utc_time_notag(Buffer, Range, Tags, TotalLen, OptOrMand) ->
 	    {Buffer02, Rb02} = restbytes2(RestBytes,Buffer01,noext),
 	    {Val01, Buffer02, Rb0+Rb01+Rb02};
 	{_,Len} ->
+	    check_bin_size(Buffer0,Len),
 	    <<PreBuff:Len/binary,RestBuff/binary>> = Buffer0,
 	    {binary_to_list(PreBuff), RestBuff, Rb0+Len}
     end.
@@ -2184,8 +2225,11 @@ decode_length(<<1:1,0:7,T/binary>>) ->
 decode_length(<<0:1,Length:7,T/binary>>) ->
     {{Length,T},1};
 decode_length(<<1:1,LL:7,T/binary>>) ->
+    check_bin_size(T,LL),
     <<Length:LL/unit:8,Rest/binary>> = T,
-    {{Length,Rest}, LL+1}.
+    {{Length,Rest}, LL+1};
+decode_length(<<>>) ->
+    throw({error,incomplete}).
 
 %decode_length([128 | T]) ->
 %    {{indefinite, T},1};
@@ -2431,12 +2475,16 @@ dotag_universal(UniversalTag,Bytes,Len) ->
     {EncLen,LenLen}=encode_length(Len),
     {[UniversalTag,EncLen,Bytes],1+LenLen+Len}.
 
+decode_integer2(_Len, <<>>,_RemovedBytes) ->
+    throw({error,incomplete});
 %% decoding postitive integer values.
 decode_integer2(Len,Bin = <<0:1,_:7,_Bs/binary>>,RemovedBytes) ->
+    check_bin_size(Bin,Len),
     <<Int:Len/unit:8,Buffer2/binary>> = Bin,
     {Int,Buffer2,RemovedBytes};
 %% decoding negative integer values.
 decode_integer2(Len,<<1:1,B2:7,Bs/binary>>,RemovedBytes)  ->
+    check_bin_size(Bs,Len-1),
     <<N:Len/unit:8,Buffer2/binary>> = <<B2,Bs/binary>>,
     Int = N - (1 bsl (8 * Len - 1)),
     {Int,Buffer2,RemovedBytes}.
@@ -2494,4 +2542,11 @@ new_tags(Tags,LastTag) ->
 	    Tags;
 	_ ->
 	    Tags ++ [LastTag]
+    end.
+
+check_bin_size(Binary, ExpectedSize) ->
+    case size(Binary) of
+	Size when Size < ExpectedSize ->
+	    throw({error,incomplete});
+	_ -> ok
     end.
