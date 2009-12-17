@@ -45,6 +45,8 @@ GENINC = pcre_exec_loop_break_cases.inc
 
 include $(ERL_TOP)/make/target.mk
 
+CC_NAME=@CC_NAME@
+
 # On windows we need a separate zlib during debug build
 ifeq ($(TARGET),win32)
 

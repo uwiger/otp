@@ -20,6 +20,8 @@
 include $(ERL_TOP)/make/target.mk
 include ../include/internal/$(TARGET)/ethread.mk
 
+CC_NAME=@CC_NAME@
+
 OMIT_OMIT_FP=no
 
 
@@ -114,7 +116,7 @@ endif
 
 CREATE_DIRS=
 
-ifeq ($(CC)-$(OMIT_FP), gcc-true)
+ifeq ($(CC_NAME)-$(OMIT_FP), GCC-true)
 CFLAGS += -fomit-frame-pointer
 endif
 

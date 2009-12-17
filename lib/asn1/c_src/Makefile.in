@@ -20,6 +20,8 @@
 include $(ERL_TOP)/make/target.mk
 include $(ERL_TOP)/make/$(TARGET)/otp.mk
 
+CC_NAME=@CC_NAME@
+
 ERLANG_OSTYPE = @ERLANG_OSTYPE@
 
 CC = @CC@

@@ -23,6 +23,8 @@
 
 include $(ERL_TOP)/make/target.mk
 include $(ERL_TOP)/make/$(TARGET)/otp.mk
+
+CC_NAME=@CC_NAME@
 # ----------------------------------------------------
 # SSL locations and include options from configure
 # ----------------------------------------------------

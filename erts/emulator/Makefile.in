@@ -20,6 +20,8 @@
 include $(ERL_TOP)/make/target.mk
 include ../vsn.mk
 
+CC_NAME=@CC_NAME@
+
 ENABLE_ALLOC_TYPE_VARS = @ENABLE_ALLOC_TYPE_VARS@
 HIPE_ENABLED=@HIPE_ENABLED@
 LIBS = @LIBS@
@@ -213,7 +215,7 @@ else
 OPT_LEVEL = -O3
 endif
 
-ifeq ($(CC), gcc)
+ifeq ($(CC_NAME), GCC)
 ifeq ($(NO_INLINE_FUNCTIONS),true)
 GEN_OPT_FLGS = $(OPT_LEVEL) -fno-inline-functions
 else
@@ -252,7 +254,7 @@ CS_TYPE_FLAGS = $(subst QUANTIFY,FAKE_QUANTIFY, \
 		$(subst PURIFY,FAKE_PURIFY, $(TYPE_FLAGS)))
 endif
 CS_CFLAGS_ = $(CS_TYPE_FLAGS) @DEFS@ $(WFLAGS) 
-ifeq ($(CC), gcc)
+ifeq ($(CC_NAME), GCC)
 CS_CFLAGS = $(subst -O2, $(GEN_OPT_FLGS) $(UNROLL_FLG), $(CS_CFLAGS_))
 else
 CS_CFLAGS = $(CS_CFLAGS_)
@@ -692,7 +694,7 @@ $(OBJDIR)/%.kp.o: sys/common/%.c
 $(OBJDIR)/%.nkp.o: sys/common/%.c
 	$(CC) -DERTS_NO_KERNEL_POLL_VERSION $(subst -O2, $(GEN_OPT_FLGS), $(CFLAGS)) $(INCLUDES) -c $< -o $@
 
-ifeq ($(CC), gcc)
+ifeq ($(CC_NAME), GCC)
 
 $(OBJDIR)/erl_obsolete.o: beam/erl_obsolete.c
 	$(CC) $(subst -Wstrict-prototypes, , $(subst -O2, $(GEN_OPT_FLGS), $(CFLAGS))) $(INCLUDES) -c $< -o $@

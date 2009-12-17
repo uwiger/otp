@@ -21,6 +21,8 @@ include vsn.mk
 
 # ----------------------------------------------------------------------
 
+CC_NAME=@CC_NAME@
+
 # Other erts dirs than the emulator dir...
 ERTSDIRS = doc/src etc epmd lib_src
 XINSTDIRS = preloaded

@@ -325,6 +325,11 @@ dnl Checks for programs.
 dnl ----------------------------------------------------------------------
 
 AC_PROG_CC
+if test "x$GCC" = "xyes"; then
+	AC_SUBST(CC_NAME, ["GCC"])
+else
+	AC_SUBST(CC_NAME)
+fi
 
 dnl ---------------------------------------------------------------------
 dnl Special stuff regarding CFLAGS and details in the environment...
