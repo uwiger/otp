@@ -422,7 +422,7 @@ try_schedule_late_disc_load(Tabs, Reason, MsgTag) ->
     end.
 
 connect_nodes(Ns) ->
-    connect_nodes(Ns, fun unit_merge/1).
+    connect_nodes(Ns, fun default_merge/1).
 
 connect_nodes(Ns, UserFun) ->
     case mnesia:system_info(is_running) of 
@@ -469,7 +469,7 @@ connect_nodes2(Father, Ns, UserFun) ->
 
 merge_schema() ->
     AllNodes = mnesia_lib:all_nodes(),
-    case try_merge_schema(AllNodes, fun unit_merge/1) of
+    case try_merge_schema(AllNodes, fun default_merge/1) of
 	ok -> 
 	    schema_is_merged();
 	{aborted, {throw, Str}} when is_list(Str) ->
@@ -478,7 +478,7 @@ merge_schema() ->
 	    fatal("Failed to merge schema: ~p~n", [Else])
     end.
 
-unit_merge(F) ->
+default_merge(F) ->
     F([]).
 
 try_merge_schema(Nodes, UserFun) ->

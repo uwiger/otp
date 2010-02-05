@@ -2657,8 +2657,10 @@ merge_schema(UserFun) ->
     schema_transaction(fun() -> UserFun(fun(Arg) -> do_merge_schema(Arg) end) end).
 
 
-do_merge_schema(LockTabs) ->
+do_merge_schema(LockTabs0) ->
     {_Mod, Tid, Ts} = get_tid_ts_and_lock(schema, write),
+    LockTabs = [{T, tab_to_nodes(T)} || T <- LockTabs0],
+    io:fwrite("LockTabs = ~p~n", [LockTabs]),
     [get_tid_ts_and_lock(T,write) || {T,_} <- LockTabs],
     Connected = val(recover_nodes),
     Running = val({current, db_nodes}),
@@ -2724,6 +2726,10 @@ do_merge_schema(LockTabs) ->
 	    %% No more nodes to merge schema with
 	    not_merged
     end.
+
+tab_to_nodes(Tab) when is_atom(Tab) ->
+    Cs = val({Tab, cstruct}),
+    mnesia_lib:cs_to_nodes(Cs).
 
 make_merge_schema(Node, [Cs | Cstructs]) ->
     Ops = do_make_merge_schema(Node, Cs),
