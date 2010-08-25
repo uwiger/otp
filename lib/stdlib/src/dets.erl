@@ -1246,9 +1246,19 @@ req(Proc, R) ->
 	{'DOWN', Ref, process, Proc, _Info} ->
             badarg;
 	{Proc, Reply} ->
+	    fix_bad_object(Reply),
 	    erlang:demonitor(Ref, [flush]),
 	    Reply
     end.
+
+%% If bad_object mnesia need to be restarted to recover.
+fix_bad_object({error, {What, _File}} = E) when What == bad_object;
+						What == premature_eof ->
+    kdb_sync:recover_mnesia({dets, E});
+fix_bad_object({error, {{What, _Where}, _File}} = E) when What == bad_object ->
+    kdb_sync:recover_mnesia({dets, E});
+fix_bad_object(_Reply) ->
+    ok.
 
 %% Inlined.
 einval({error, {file_error, _, einval}}, A) ->
