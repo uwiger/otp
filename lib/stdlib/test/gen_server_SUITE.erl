@@ -199,6 +199,35 @@ start(Config) when is_list(Config) ->
 		  test_server:fail(not_stopped)
 	  end,
 
+    %% via register
+    ?line dummy_via:reset(),
+    ?line {ok, Pid6} =
+	gen_server:start({via, dummy_via, my_test_name},
+			 gen_server_SUITE, [], []),
+    ?line ok = gen_server:call({via, dummy_via, my_test_name}, started_p),
+    ?line {error, {already_started, Pid6}} =
+	gen_server:start({via, dummy_via, my_test_name},
+			 gen_server_SUITE, [], []),
+    ?line ok = gen_server:call({via, dummy_via, my_test_name}, stop),
+    test_server:sleep(1),
+    ?line {'EXIT', {noproc,_}} = (catch gen_server:call(Pid6, started_p, 10)),
+
+    %% via register linked
+    ?line dummy_via:reset(),
+    ?line {ok, Pid7} =
+	gen_server:start_link({via, dummy_via, my_test_name},
+			      gen_server_SUITE, [], []), 
+    ?line ok = gen_server:call({via, dummy_via, my_test_name}, started_p),
+    ?line {error, {already_started, Pid7}} =
+	gen_server:start({via, dummy_via, my_test_name},
+			 gen_server_SUITE, [], []),
+    ?line ok = gen_server:call({via, dummy_via, my_test_name}, stop),
+    ?line receive
+	      {'EXIT', Pid7, stopped} ->
+		  ok
+	  after 5000 ->
+		  test_server:fail(not_stopped)
+	  end,
     test_server:messages_get(),
 
     %% Must wait for all error messages before going to next test.
