@@ -360,6 +360,8 @@ force_load_table(Tab) when is_atom(Tab), Tab /= schema ->
 	    do_force_load_table(Tab);
 	disc_only_copies ->
 	    do_force_load_table(Tab);
+        {external_copies, _} ->
+            do_force_load_table(Tab);        
 	unknown ->
 	    set({Tab, load_by_force}, true),
 	    cast({force_load_updated, Tab}),
@@ -1479,7 +1481,11 @@ update_whereabouts(Tab, Node, State) ->
 	    if   %% Avoid reading from disc_only_copies
 		NodeST == disc_only_copies ->
 		    ignore;
+		NodeST == external_copies ->
+		    ignore;
 		ReadST == disc_only_copies ->
+		    mnesia_lib:set_remote_where_to_read(Tab);
+		ReadST == external_copies ->
 		    mnesia_lib:set_remote_where_to_read(Tab);
 		true ->
 		    ignore
@@ -1529,6 +1535,7 @@ last_consistent_replica(Tab, Downs) ->
     Ram = Cs#cstruct.ram_copies,
     Disc = Cs#cstruct.disc_copies,
     DiscOnly = Cs#cstruct.disc_only_copies,
+    Ext = Cs#cstruct.external_copies,
     BetterCopies0 = mnesia_lib:remote_copy_holders(Cs) -- Downs,
     BetterCopies = BetterCopies0 -- Ram,
     AccessMode = Cs#cstruct.access_mode,
@@ -1561,7 +1568,7 @@ last_consistent_replica(Tab, Downs) ->
 	    false;
 	Storage == ram_copies ->
 	    if
-		Disc == [], DiscOnly == [] ->
+		Disc == [], DiscOnly == [], Ext == [] ->
 		    %% Nobody has copy on disc
 		    {true, {Tab, ram_only}};
 		true ->
@@ -1793,6 +1800,11 @@ info([Tab | Tail]) ->
 			dets:info(Tab, size), 
 			dets:info(Tab, file_size),
 			"bytes on disc");
+        {external_copies, Mod} ->
+            info_format(Tab,
+                        Mod:info(Tab, size),
+                        Mod:info(Tab, memory),
+                        "words of mem");
 	_ ->
 	    info_format(Tab, 
 			?ets_info(Tab, size),

@@ -169,13 +169,19 @@ do_set_schema(Tab) ->
     Cs = list2cs(List),
     do_set_schema(Tab, Cs).
 
+cstruct_type(#cstruct{type = {external, Type, _}}) ->
+    Type;
+cstruct_type(Cs) ->
+    Cs#cstruct.type.
+
 do_set_schema(Tab, Cs) ->
-    Type = Cs#cstruct.type,
+    Type = cstruct_type(Cs),
     set({Tab, setorbag}, Type),
     set({Tab, local_content}, Cs#cstruct.local_content),
     set({Tab, ram_copies}, Cs#cstruct.ram_copies),
     set({Tab, disc_copies}, Cs#cstruct.disc_copies),
     set({Tab, disc_only_copies}, Cs#cstruct.disc_only_copies),
+    set({Tab, external_copies}, Cs#cstruct.external_copies),
     set({Tab, load_order}, Cs#cstruct.load_order),
     set({Tab, access_mode}, Cs#cstruct.access_mode),
     set({Tab, snmp}, Cs#cstruct.snmp),
@@ -641,8 +647,9 @@ list2cs(List) when is_list(List) ->
     Rc0 = pick(Name, ram_copies, List, []),
     Dc = pick(Name, disc_copies, List, []),
     Doc = pick(Name, disc_only_copies, List, []),
-    Rc = case {Rc0, Dc, Doc} of
-             {[], [], []} -> [node()];
+    Ext = pick(Name, external_copies, List, []),
+    Rc = case {Rc0, Dc, Doc, Ext} of
+             {[], [], [], []} -> [node()];
              _ -> Rc0
          end,
     LC = pick(Name, local_content, List, false),
@@ -671,6 +678,7 @@ list2cs(List) when is_list(List) ->
              ram_copies = Rc,
              disc_copies = Dc,
              disc_only_copies = Doc,
+             external_copies = Ext,
              type = Type,
              index = Ix2,
              snmp = Snmp,
@@ -720,7 +728,13 @@ attr_to_pos(Attr, _, _) ->
     mnesia:abort({bad_type, Attr}).
     
 check_keys(Tab, [{Key, _Val} | Tail], Items) ->
-    case lists:member(Key, Items) of
+    Key1 = if 
+               is_tuple(Key) ->
+                   element(1, Key);
+               true ->
+                   Key
+           end,
+    case lists:member(Key1, Items) of
         true ->  [Key | check_keys(Tab, Tail, Items)];
         false -> mnesia:abort({badarg, Tab, Key})
     end;
@@ -744,6 +758,12 @@ has_duplicates([]) ->
     false.
 
 %% This is the only place where we check the validity of data
+
+verify_cstruct_type({external, Type, _}) ->
+    verify_cstruct_type(Type);
+verify_cstruct_type(Type) ->
+    lists:member(Type, [set, bag, ordered_set]).
+
 verify_cstruct(Cs) when is_record(Cs, cstruct) ->
     verify_nodes(Cs),
 
@@ -752,6 +772,8 @@ verify_cstruct(Cs) when is_record(Cs, cstruct) ->
     Type = Cs#cstruct.type,
     verify(true, lists:member(Type, [set, bag, ordered_set]),
 	   {bad_type, Tab, {type, Type}}),
+    verify(true, verify_cstruct_type(Type),
+           {bad_type, Tab, {type, Type}}),
 
     %% Currently ordered_set is not supported for disk_only_copies.
     if 
@@ -840,12 +862,15 @@ verify_nodes(Cs) ->
     Ram = Cs#cstruct.ram_copies,
     Disc = Cs#cstruct.disc_copies,
     DiscOnly = Cs#cstruct.disc_only_copies,
+    Ext = Cs#cstruct.external_copies,
     LoadOrder = Cs#cstruct.load_order,
 
     verify({alt, [nil, list]}, mnesia_lib:etype(Ram),
 	   {bad_type, Tab, {ram_copies, Ram}}),
     verify({alt, [nil, list]}, mnesia_lib:etype(Disc),
 	   {bad_type, Tab, {disc_copies, Disc}}),
+    verify({alt, [nil, list]}, mnesia_lib:etype(Ext),
+	   {bad_type, Tab, {external_copies, Ext}}),
     case Tab of
 	schema ->
 	    verify([], DiscOnly, {bad_type, Tab, {disc_only_copies, DiscOnly}});
@@ -857,10 +882,10 @@ verify_nodes(Cs) ->
     verify(integer, mnesia_lib:etype(LoadOrder),
 	   {bad_type, Tab, {load_order, LoadOrder}}),
     
-    Nodes = Ram ++ Disc ++ DiscOnly,
+    Nodes = Ram ++ Disc ++ DiscOnly ++ Ext,
     verify(list, mnesia_lib:etype(Nodes),
 	   {combine_error, Tab,
-	    [{ram_copies, []}, {disc_copies, []}, {disc_only_copies, []}]}),
+	    [{ram_copies, []}, {disc_copies, []}, {disc_only_copies, []}, {external_copies, []}]}),
     verify(false, has_duplicates(Nodes), {combine_error, Tab, Nodes}),
     AtomCheck = fun(N) -> verify(atom, mnesia_lib:etype(N), {bad_type, Tab, N}) end, 
     lists:foreach(AtomCheck, Nodes).
@@ -1227,6 +1252,8 @@ new_cs(Cs, Node, disc_copies, add) ->
     Cs#cstruct{disc_copies = opt_add(Node, Cs#cstruct.disc_copies)};
 new_cs(Cs, Node, disc_only_copies, add) ->
     Cs#cstruct{disc_only_copies = opt_add(Node, Cs#cstruct.disc_only_copies)};
+new_cs(Cs, Node, {external_copies, _Mod}, add) ->
+    Cs#cstruct{external_copies = opt_add(Node, Cs#cstruct.external_copies)};
 new_cs(Cs, Node, ram_copies, del) ->
     Cs#cstruct{ram_copies = lists:delete(Node , Cs#cstruct.ram_copies)};
 new_cs(Cs, Node, disc_copies, del) ->
@@ -1234,6 +1261,9 @@ new_cs(Cs, Node, disc_copies, del) ->
 new_cs(Cs, Node, disc_only_copies, del) ->
     Cs#cstruct{disc_only_copies = 
                lists:delete(Node , Cs#cstruct.disc_only_copies)};
+new_cs(Cs, Node, {external_copies, _Mod}, del) ->
+    Cs#cstruct{external_copies = 
+               lists:delete(Node , Cs#cstruct.external_copies)};
 new_cs(Cs, _Node, Storage, _Op) ->
     mnesia:abort({badarg, Cs#cstruct.name, Storage}).
 
@@ -1790,6 +1820,11 @@ prepare_op(Tid, {op, create_table, TabDef}, _WaitFor) ->
 	    create_disc_only_table(Tab,Cs#cstruct.type),
 	    insert_cstruct(Tid, Cs, false),
 	    {true, optional};
+	{external_copies, Mod} ->
+	    mnesia_lib:set({Tab, create_table},true),
+            create_external_table(Tab, Mod, Cs),
+	    insert_cstruct(Tid, Cs, false),
+	    {true, optional};
         unknown -> %% No replica on this node
 	    mnesia_lib:set({Tab, create_table},true),
 	    insert_cstruct(Tid, Cs, false),
@@ -2064,6 +2099,14 @@ create_disc_only_table(Tab,Type) ->
 	    mnesia:abort({system_limit, Tab, {Err,Reason}})
     end.
 
+create_external_table(Tab, Mod, Cs) ->
+    case mnesia_monitor:unsafe_create_external(Tab, Mod, Cs) of
+	Tab ->
+	    ok;
+	{error,Reason} ->
+	    Err = "Failed to create external table",
+	    mnesia:abort({system_limit, Tab, {Err,Reason}})
+    end.
 
 receive_sync([], Pids) ->
     Pids;
@@ -2233,7 +2276,9 @@ undo_prepare_op(Tid, {op, create_table, TabDef}) ->
 	    mnesia_monitor:unsafe_close_dets(Tab),
 	    Dat = mnesia_lib:tab2dat(Tab),
 	    %%	    disc_delete_table(Tab, Storage),
-	    file:delete(Dat)
+	    file:delete(Dat);
+        {external_copies, Mod} ->
+            Mod:delete_table(Tab)
     end;
 	    
 undo_prepare_op(Tid, {op, add_table_copy, Storage, Node, TabDef}) ->
@@ -2326,6 +2371,10 @@ ram_delete_table(Tab, Storage) ->
     case Storage of
 	unknown ->
 	    ignore;
+        external_copies ->
+            ignore;
+        {external_copies, _} ->
+            ignore;
 	disc_only_copies ->
 	    ignore;
 	_Else -> 
@@ -2562,8 +2611,9 @@ restore_func(Tab, R) ->
 where_to_commit(Tab, CsList) ->
     Ram =   [{N, ram_copies} || N <- pick(Tab, ram_copies, CsList, [])],
     Disc =  [{N, disc_copies} || N <- pick(Tab, disc_copies, CsList, [])],
-    DiscO = [{N, disc_only_copies} || N <- pick(Tab, disc_only_copies, CsList, [])],
-    Ram ++ Disc ++ DiscO.
+    DiscO = [{N, external_copies} || N <- pick(Tab, external_copies, CsList, [])],
+    Ext = [{N, disc_only_copies} || N <- pick(Tab, disc_only_copies, CsList, [])],
+    Ram ++ Disc ++ DiscO ++ Ext.
     
 %% Changes of the Meta info of schema itself is not allowed
 restore_schema([{schema, schema, _List} | Schema], R) ->

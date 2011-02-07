@@ -138,7 +138,13 @@ do_get_disc_copy2(Tab, Reason, Storage, Type) when Storage == disc_only_copies -
 		{error, Error} ->
 		    {not_loaded, {"Failed to create dets table", Error}}
 	    end
-    end.
+    end;
+
+do_get_disc_copy2(Tab, Reason, Storage = {external_copies, _Mod}, _Type) ->
+    mnesia_index:init_index(Tab, Storage),
+    set({Tab, load_node}, node()),
+    set({Tab, load_reason}, Reason),
+    {loaded, ok}.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Load a table from a remote node
@@ -387,7 +393,15 @@ create_table(Tab, TabSize, Storage, Cs) ->
 		    {Storage, Tab};
 		Else ->
 		    Else
-	    end
+	    end;
+        element(1, Storage) == external_copies ->
+            { _, Mod } = Storage,
+            case mnesia_monitor:unsafe_create_external(Tab, Mod, Cs) of
+                Tab ->
+                    {Storage, Tab};
+                Else ->
+                    Else
+            end
     end.
 
 tab_receiver(Node, Tab, Storage, Cs, PConv, OrigTabRec) ->
@@ -458,6 +472,15 @@ get_data(Pid, TabRec) ->
 	    get_data(Pid, TabRec)
     end.
 
+init_table(Tab, {external_copies,Mod}, Fun, false, false, Sender) ->
+    case catch Mod:init_table(Tab, Fun, Sender) of
+	true ->
+	    ok;
+        ok ->           % "ets-style" is true, "dets-style" is ok;
+                        % be nice and accept both :)
+            ok;
+	{'EXIT', Else} -> Else
+    end;
 init_table(Tab, disc_only_copies, Fun, false, DetsInfo,Sender) ->
     ErtsVer = erlang:system_info(version),
     case DetsInfo of
@@ -583,7 +606,10 @@ handle_last({ram_copies, Tab}, _Type, DatBin) ->
 	    ok;
 	false ->
 	    ok
-    end.
+    end;
+
+handle_last(_Storage, _Type, nobin) ->
+    ok.
 
 down(Tab, Storage) ->
     case Storage of
@@ -594,7 +620,9 @@ down(Tab, Storage) ->
 	disc_only_copies ->
 	    TmpFile = mnesia_lib:tab2tmp(Tab),
 	    mnesia_lib:dets_sync_close(Tab),
-	    file:delete(TmpFile)
+	    file:delete(TmpFile);
+        {external_copies, Mod} ->
+            catch Mod:delete_table(Tab)
     end,
     mnesia_checkpoint:tm_del_copy(Tab, node()),
     mnesia_controller:sync_del_table_copy_whereabouts(Tab, node()),
@@ -619,21 +647,35 @@ db_erase({ram_copies, Tab}, Key) ->
 db_erase({disc_copies, Tab}, Key) ->
     true = ?ets_delete(Tab, Key);
 db_erase({disc_only_copies, Tab}, Key) ->
-    ok = dets:delete(Tab, Key).
+    ok = dets:delete(Tab, Key);
+db_erase({{external_copies, Mod}, Tab}, Key) ->
+    ok = Mod:delete(Tab, Key).
 
 db_match_erase({ram_copies, Tab} , Pat) ->
     true = ?ets_match_delete(Tab, Pat);
 db_match_erase({disc_copies, Tab} , Pat) ->
     true = ?ets_match_delete(Tab, Pat);
 db_match_erase({disc_only_copies, Tab}, Pat) ->
-    ok = dets:match_delete(Tab, Pat).
+    ok = dets:match_delete(Tab, Pat);
+db_match_erase({{external_copies, Mod}, Tab}, Pat) ->
+    % "ets style" is to return true
+    % "dets style" is to return N | { error, Reason }
+    %   or sometimes ok (?) 
+    % be nice and accept both
+    case Mod:match_delete(Tab, Pat) of
+      N when is_integer (N) -> ok;
+      true -> ok;
+      ok -> ok
+    end.
 
 db_put({ram_copies, Tab}, Val) ->
     true = ?ets_insert(Tab, Val);
 db_put({disc_copies, Tab}, Val) ->
     true = ?ets_insert(Tab, Val);
 db_put({disc_only_copies, Tab}, Val) ->
-    ok = dets:insert(Tab, Val).
+    ok = dets:insert(Tab, Val);
+db_put({{external_copies, Mod}, Tab}, Val) ->
+    ok = Mod:insert(Tab, Val).
 
 %% This code executes at the remote site where the data is
 %% executes in a special copier process.

@@ -31,6 +31,7 @@
 	 init/0,
 	 mktab/2,
 	 unsafe_mktab/2,
+         unsafe_create_external/3,
 	 mnesia_down/2,
 	 needs_protocol_conversion/1,
 	 negotiate_protocol/1,
@@ -124,6 +125,8 @@ close_log(Name) ->
 unsafe_close_log(Name) ->
     unsafe_call({unsafe_close_log, Name}).
 
+unsafe_create_external(Tab, Mod, Cs) ->
+    unsafe_call({unsafe_create_external, Tab, Mod, Cs}).
 
 disconnect(Node) ->
     cast({disconnect, Node}).
@@ -397,6 +400,14 @@ handle_call({close_log, Name}, _From, State) ->
 handle_call({unsafe_close_log, Name}, _From, State) ->
     disk_log:close(Name),
     {reply, ok, State};
+
+handle_call({unsafe_create_external, Tab, Mod, Cs}, _From, State) ->
+    case catch Mod:create_table(Tab, Cs) of
+	{'EXIT', ExitReason} ->
+	    {reply, {error, ExitReason}, State};
+	Reply ->
+	    {reply, Reply, State}
+    end;
 
 handle_call({negotiate_protocol, Mon, _Version, _Protocols}, _From, State) 
   when State#state.tm_started == false ->

@@ -1148,13 +1148,14 @@ arrange(Tid, Store, Type) ->
 reverse([]) ->
     [];
 reverse([H=#commit{ram_copies=Ram, disc_copies=DC, 
-		   disc_only_copies=DOC,snmp = Snmp}
+		   disc_only_copies=DOC,snmp = Snmp, external_copies=EC}
 	 |R]) ->
     [
      H#commit{
-       ram_copies       =  lists:reverse(Ram),
-       disc_copies      =  lists:reverse(DC),
-       disc_only_copies =  lists:reverse(DOC),
+       ram_copies       = lists:reverse(Ram),
+       disc_copies      = lists:reverse(DC),
+       disc_only_copies = lists:reverse(DOC),
+       external_copies  = lists:reverse(EC),
        snmp             = lists:reverse(Snmp)
       }  
      | reverse(R)].
@@ -1300,7 +1301,10 @@ prepare_node(Node, Storage, [Item | Items], Rec, Kind) when Kind /= schema ->
 		Rec#commit{disc_copies = [Item | Rec#commit.disc_copies]};
 	    disc_only_copies ->
 		Rec#commit{disc_only_copies =
-			   [Item | Rec#commit.disc_only_copies]}
+			   [Item | Rec#commit.disc_only_copies]};
+	    {external_copies, _} ->
+		Rec#commit{external_copies =
+			   [Item | Rec#commit.external_copies]}
 	end,
     prepare_node(Node, Storage, Items, Rec2, Kind);
 prepare_node(_Node, _Storage, Items, Rec, Kind) 
@@ -1734,8 +1738,9 @@ do_commit(Tid, C, DumperMode) ->
     R2 = do_update(Tid, ram_copies, C#commit.ram_copies, R),
     R3 = do_update(Tid, disc_copies, C#commit.disc_copies, R2),
     R4 = do_update(Tid, disc_only_copies, C#commit.disc_only_copies, R3),
+    R5 = do_update(Tid, external_copies, C#commit.external_copies, R4),
     mnesia_subscr:report_activity(Tid),
-    R4.
+    R5.
 
 %% Update the items
 do_update(Tid, Storage, [Op | Ops], OldRes) ->
@@ -1878,6 +1883,7 @@ do_snmp(Tid, [Head | Tail]) ->
 commit_nodes([C | Tail], AccD, AccR) 
         when C#commit.disc_copies == [],
              C#commit.disc_only_copies  == [],
+             C#commit.external_copies  == [],
              C#commit.schema_ops == [] ->
     commit_nodes(Tail, AccD, [C#commit.node | AccR]);
 commit_nodes([C | Tail], AccD, AccR) ->
@@ -1890,7 +1896,8 @@ commit_decision(D, [C | Tail], AccD, AccR) ->
     {D2, Tail2} = 
 	case C#commit.schema_ops of
 	    [] when C#commit.disc_copies == [],
-		    C#commit.disc_only_copies  == [] ->
+		    C#commit.disc_only_copies  == [],
+                    C#commit.external_copies  == [] ->
 		commit_decision(D, Tail, AccD, [N | AccR]);
 	    [] ->
 		commit_decision(D, Tail, [N | AccD], AccR);

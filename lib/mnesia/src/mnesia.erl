@@ -1598,7 +1598,7 @@ dirty_update_counter(Tab, Key, Incr) ->
 do_dirty_update_counter(SyncMode, Tab, Key, Incr)
   when is_atom(Tab), Tab /= schema, is_integer(Incr) ->
     case ?catch_val({Tab, record_validation}) of
-	{RecName, 3, set} ->
+	{RecName, 3, Type} when Type =:= set orelse Type =:= ordered_set ->
 	    Oid = {Tab, Key},
 	    mnesia_tm:dirty(SyncMode, {Oid, {RecName, Incr}, update_counter});
 	_ ->
@@ -1902,6 +1902,8 @@ raw_table_info(Tab, Item) ->
 	    info_reply(catch ?ets_info(Tab, Item), Tab, Item);
 	disc_only_copies ->
 	    info_reply(catch dets:info(Tab, Item), Tab, Item);
+        {external_copies, Mod} ->
+            info_reply(catch Mod:info(Tab, Item), Tab, Item);
 	unknown ->
 	    bad_info_reply(Tab, Item);
 	{'EXIT', _} ->
@@ -2017,13 +2019,14 @@ display_tab_info() ->
 
     Tabs = system_info(tables),
     
-    {Unknown, Ram, Disc, DiscOnly} =
-	lists:foldl(fun storage_count/2, {[], [], [], []}, Tabs),
+    {Unknown, Ram, Disc, DiscOnly, Ext} =
+	lists:foldl(fun storage_count/2, {[], [], [], [], []}, Tabs),
     
     io:format("remote             = ~p~n", [lists:sort(Unknown)]),
     io:format("ram_copies         = ~p~n", [lists:sort(Ram)]),
     io:format("disc_copies        = ~p~n", [lists:sort(Disc)]),
     io:format("disc_only_copies   = ~p~n", [lists:sort(DiscOnly)]),
+    io:format("external_copies    = ~p~n", [lists:sort(Ext)]),
     
     Rfoldl = fun(T, Acc) ->
 		     Rpat =
@@ -2044,12 +2047,13 @@ display_tab_info() ->
     Rdisp = fun({Rpat, Rtabs}) -> io:format("~p = ~p~n", [Rpat, Rtabs]) end,
     lists:foreach(Rdisp, lists:sort(Repl)).
 
-storage_count(T, {U, R, D, DO}) ->
+storage_count(T, {U, R, D, DO, Ext}) ->
     case table_info(T, storage_type) of
-	unknown -> {[T | U], R, D, DO};
-	ram_copies -> {U, [T | R], D, DO};
-	disc_copies -> {U, R, [T | D], DO};
-	disc_only_copies -> {U, R, D, [T | DO]}
+	unknown -> {[T | U], R, D, DO, Ext};
+	ram_copies -> {U, [T | R], D, DO, Ext};
+	disc_copies -> {U, R, [T | D], DO, Ext};
+	disc_only_copies -> {U, R, D, [T | DO], Ext};
+        {external_copies, _} -> {U, R, D, DO, [T | Ext]}
     end.
 
 system_info(Item) ->
@@ -2065,9 +2069,10 @@ system_info2(all) ->
 system_info2(db_nodes) ->
     DiscNs = ?catch_val({schema, disc_copies}),
     RamNs = ?catch_val({schema, ram_copies}),
+    ExtNs = ?catch_val({schema, external_copies}),
     if
-	is_list(DiscNs), is_list(RamNs) ->
-	    DiscNs ++ RamNs;
+	is_list(DiscNs), is_list(RamNs), is_list(ExtNs) ->
+	    DiscNs ++ RamNs ++ ExtNs;
 	true ->
 	    case mnesia_schema:read_nodes() of
 		{ok, Nodes} -> Nodes;
