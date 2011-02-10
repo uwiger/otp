@@ -28,6 +28,7 @@
 -module(mnesia_schema).
 
 -export([
+         add_backend_type/2,
          add_snmp/2,
          add_table_copy/3,
          add_table_index/2,
@@ -759,12 +760,49 @@ has_duplicates([]) ->
 
 %% This is the only place where we check the validity of data
 
-verify_cstruct_type({external, Type, _}) ->
-    verify_cstruct_type(Type);
-verify_cstruct_type(Type) ->
-    lists:member(Type, [set, bag, ordered_set]).
-
 verify_cstruct(Cs) when is_record(Cs, cstruct) ->
+    assert_correct_cstruct(Cs),
+    Cs1 = verify_external_copies(Cs),
+    assert_correct_cstruct(Cs1),
+    Cs1.
+
+verify_external_copies(#cstruct{external_copies = []} = Cs) ->
+    Cs;
+verify_external_copies(#cstruct{name = Tab,
+                                external_copies = EC,
+                                ram_copies = RC,
+                                disc_copies = DC,
+                                disc_only_copies = DOC} = Cs) ->
+    Bad = {bad_type, Tab, {external_copies, EC}},
+    AllOtherNodes = RC ++ DC ++ DOC,
+    AllECNodes = lists:concat([Ns || {_, Ns} <- EC,
+                                     is_list(Ns)]),
+    verify(true, length(lists:usort(AllECNodes)) == length(AllECNodes), Bad),
+    CsL = cs2list(Cs),
+    lists:foldl(
+      fun({Mod, Ns}, CsX) ->
+              BadTab = fun(Why) ->
+                               {Why, Tab, {external_copies,Mod,Ns}}
+                       end,
+              verify(atom, mnesia_lib:etype(Mod), BadTab),
+              verify(true, fun() ->
+                                   lists:all(fun is_atom/1, Ns)
+                           end, BadTab),
+              CsXL = cs2list(CsX),
+              try Mod:check_definition(Tab, Ns, CsXL) of
+                  ok ->
+                      CsX;
+                  {ok, CsX1} ->
+                      CsX1;
+                  {error, Reason} ->
+                      mnesia:abort(BadTab(Reason))
+              catch
+                  error:E ->
+                      mnesia:abort(BadTab(E))
+              end
+      end, Cs, EC).
+
+assert_correct_cstruct(Cs) when is_record(Cs, cstruct) ->
     verify_nodes(Cs),
 
     Tab = Cs#cstruct.name,
@@ -772,8 +810,6 @@ verify_cstruct(Cs) when is_record(Cs, cstruct) ->
     Type = Cs#cstruct.type,
     verify(true, lists:member(Type, [set, bag, ordered_set]),
 	   {bad_type, Tab, {type, Type}}),
-    verify(true, verify_cstruct_type(Type),
-           {bad_type, Tab, {type, Type}}),
 
     %% Currently ordered_set is not supported for disk_only_copies.
     if 
@@ -970,6 +1006,34 @@ check_active([{badrpc, Reason} | _Replies], Expl, Tab) ->
 check_active([], _Expl, _Tab) ->
     ok.
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Function for definining an external backend type
+
+add_backend_type(Name, Module) ->
+    schema_transaction(fun() -> do_add_backend_type(Name, Module) end).
+
+do_add_backend_type(Name, Module) ->
+    ExpectedExports = mnesia_backend_type:module_info(callbacks),
+    Exports = try Module:module_info(exports)
+              catch
+                  error:_ ->
+                      mnesia:abort({undef_backend, Module})
+              end,
+    case do_read_table_property(schema, {backend_type, Name}) of
+        undefined ->
+            ok;
+        _ ->
+            mnesia:abort({backend_type_already_exists, Name})
+    end,
+    case ExpectedExports -- Exports of
+        [] ->
+            %% all callbacks exist (assume correct)
+            do_write_table_property(schema, {{backend_type,Name},Module});
+        _ ->
+            mnesia:abort({bad_type, {backend_type,Name,Module}})
+    end.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Here's the real interface function to create a table
 
@@ -1006,9 +1070,9 @@ make_create_table(Cs) ->
 %     Store = Ts#tidstore.store,
 %     do_insert_schema_ops(Store, unsafe_make_create_table(Cs)).
 
-unsafe_make_create_table(Cs) ->
+unsafe_make_create_table(Cs0) ->
     {_Mod, Tid, Ts} =  get_tid_ts_and_lock(schema, none),
-    verify_cstruct(Cs),
+    Cs = verify_cstruct(Cs0),
     Tab = Cs#cstruct.name,
         
     %% Check that we have all disc replica nodes running
@@ -1159,8 +1223,7 @@ make_add_table_copy(Tab, Node, Storage) ->
     Cs = incr_version(val({Tab, cstruct})),
     Ns = mnesia_lib:cs_to_nodes(Cs),
     verify(false, lists:member(Node, Ns), {already_exists, Tab, Node}),
-    Cs2 = new_cs(Cs, Node, Storage, add),
-    verify_cstruct(Cs2),
+    Cs2 = verify_cstruct(new_cs(Cs, Node, Storage, add)),
     
     %% Check storage and if node is running
     IsRunning = lists:member(Node, val({current, db_nodes})),
@@ -1208,13 +1271,13 @@ make_del_table_copy(Tab, Node) ->
         _ when Tab == schema ->
 	    %% ensure_active(Cs2),
 	    ensure_not_active(Tab, Node),
-            verify_cstruct(Cs2),
+            Cs3 = verify_cstruct(Cs2),
 	    Ops = remove_node_from_tabs(val({schema, tables}), Node),
-	    [{op, del_table_copy, ram_copies, Node, cs2list(Cs2)} | Ops];
+	    [{op, del_table_copy, ram_copies, Node, cs2list(Cs3)} | Ops];
         _ ->
 	    ensure_active(Cs),
-            verify_cstruct(Cs2),
-            [{op, del_table_copy, Storage, Node, cs2list(Cs2)}]
+            Cs3 = verify_cstruct(Cs2),
+            [{op, del_table_copy, Storage, Node, cs2list(Cs3)}]
     end.
 
 remove_node_from_tabs([], _Node) ->
@@ -1240,8 +1303,8 @@ remove_node_from_tabs([Tab|Rest], Node) ->
 		    [{op, delete_table, cs2list(Cs)} |
 		     remove_node_from_tabs(Rest, Node)];
 		_Ns ->
-		    verify_cstruct(Cs2),
-		    [{op, del_table_copy, ram_copies, Node, cs2list(Cs2)}|
+		    Cs3 = verify_cstruct(Cs2),
+		    [{op, del_table_copy, ram_copies, Node, cs2list(Cs3)}|
 		     remove_node_from_tabs(Rest, Node)]
 	    end
     end.
@@ -1295,9 +1358,9 @@ make_move_table(Tab, FromNode, ToNode) ->
     Storage = mnesia_lib:schema_cs_to_storage_type(FromNode, Cs),
     verify(true, lists:member(ToNode, Running), {not_active, schema, ToNode}),
     
-    Cs2 = new_cs(Cs, ToNode, Storage, add),
-    Cs3 = new_cs(Cs2, FromNode, Storage, del),
-    verify_cstruct(Cs3),
+    Cs2 = verify_cstruct(new_cs(Cs, ToNode, Storage, add)),
+    Cs3 = verify_cstruct(new_cs(Cs2, FromNode, Storage, del)),
+    %% UW: is the following use of Cs2 and Cs3 deliberate?
     [{op, add_table_copy, Storage, ToNode, cs2list(Cs2)},
      {op, sync_trans},
      {op, del_table_copy, Storage, FromNode, cs2list(Cs3)}].
@@ -1333,9 +1396,8 @@ make_change_table_copy_type(Tab, Node, ToS) ->
 	    ensure_active(Cs)
     end,
 
-    Cs2 = new_cs(Cs, Node, FromS, del),
-    Cs3 = new_cs(Cs2, Node, ToS, add),
-    verify_cstruct(Cs3),
+    Cs2 = verify_cstruct(new_cs(Cs, Node, FromS, del)),
+    Cs3 = verify_cstruct(new_cs(Cs2, Node, ToS, add)),
     
     [{op, change_table_copy_type, Node, FromS, ToS, cs2list(Cs3)}].
 
@@ -1361,8 +1423,7 @@ make_add_table_index(Tab, Pos) ->
     Ix = Cs#cstruct.index,
     verify(false, lists:member(Pos, Ix), {already_exists, Tab, Pos}),
     Ix2 = lists:sort([Pos | Ix]),
-    Cs2 = Cs#cstruct{index = Ix2},
-    verify_cstruct(Cs2),
+    Cs2 = verify_cstruct(Cs#cstruct{index = Ix2}),
     [{op, add_index, Pos, cs2list(Cs2)}].
 
 del_table_index(Tab, Pos) ->
@@ -1382,8 +1443,7 @@ make_del_table_index(Tab, Pos) ->
     ensure_active(Cs),
     Ix = Cs#cstruct.index,
     verify(true, lists:member(Pos, Ix), {no_exists, Tab, Pos}),
-    Cs2 = Cs#cstruct{index = lists:delete(Pos, Ix)},
-    verify_cstruct(Cs2),
+    Cs2 = verify_cstruct(Cs#cstruct{index = lists:delete(Pos, Ix)}),
     [{op, del_index, Pos, cs2list(Cs2)}].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1405,8 +1465,7 @@ make_add_snmp(Tab, Ustruct) ->
     verify([], Cs#cstruct.snmp, {already_exists, Tab, snmp}),
     Error = {badarg, Tab, snmp, Ustruct},
     verify(true, mnesia_snmp_hook:check_ustruct(Ustruct), Error),
-    Cs2 = Cs#cstruct{snmp = Ustruct},
-    verify_cstruct(Cs2),
+    Cs2 = verify_cstruct(Cs#cstruct{snmp = Ustruct}),
     [{op, add_snmp, Ustruct, cs2list(Cs2)}].
 
 del_snmp(Tab) ->
@@ -1423,8 +1482,7 @@ make_del_snmp(Tab) ->
     ensure_writable(schema),
     Cs = incr_version(val({Tab, cstruct})),
     ensure_active(Cs),
-    Cs2 = Cs#cstruct{snmp = []},
-    verify_cstruct(Cs2),
+    Cs2 = verify_cstruct(Cs#cstruct{snmp = []}),
     [{op, del_snmp, cs2list(Cs2)}].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1455,8 +1513,9 @@ make_transform(Tab, Fun, NewAttrs, NewRecName) ->
     ensure_writable(Tab),
     case mnesia_lib:val({Tab, index}) of
 	[] -> 
-	    Cs2 = Cs#cstruct{attributes = NewAttrs, record_name = NewRecName},
-	    verify_cstruct(Cs2),
+	    Cs2 = verify_cstruct(
+                    Cs#cstruct{attributes = NewAttrs,
+                               record_name = NewRecName}),
 	    [{op, transform, Fun, cs2list(Cs2)}];
 	PosList ->
 	    DelIdx = fun(Pos, Ncs) ->
@@ -1475,7 +1534,7 @@ make_transform(Tab, Fun, NewAttrs, NewRecName) ->
             {DelOps, Cs1} = lists:mapfoldl(DelIdx, Cs, PosList),
 	    Cs2 = Cs1#cstruct{attributes = NewAttrs, record_name = NewRecName},
             {AddOps, Cs3} = lists:mapfoldl(AddIdx, Cs2, PosList),
-	    verify_cstruct(Cs3),
+	    _ = verify_cstruct(Cs3), % just a sanity check
 	    lists:flatten([DelOps, {op, transform, Fun, cs2list(Cs2)}, AddOps])
     end.
 
@@ -1498,8 +1557,7 @@ make_change_table_access_mode(Tab, Mode) ->
     ensure_active(Cs),
     OldMode = Cs#cstruct.access_mode,
     verify(false, OldMode ==  Mode, {already_exists, Tab, Mode}),
-    Cs2 = Cs#cstruct{access_mode = Mode},
-    verify_cstruct(Cs2),
+    Cs2 = verify_cstruct(Cs#cstruct{access_mode = Mode}),
     [{op, change_table_access_mode, cs2list(Cs2), OldMode, Mode}].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1519,8 +1577,7 @@ make_change_table_load_order(Tab, LoadOrder) ->
     Cs = incr_version(val({Tab, cstruct})),
     ensure_active(Cs),
     OldLoadOrder = Cs#cstruct.load_order,
-    Cs2 = Cs#cstruct{load_order = LoadOrder},
-    verify_cstruct(Cs2),
+    Cs2 = verify_cstruct(Cs#cstruct{load_order = LoadOrder}),
     [{op, change_table_load_order, cs2list(Cs2), OldLoadOrder, LoadOrder}].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1560,8 +1617,7 @@ make_write_table_properties(Tab, [Prop | Props], Cs) ->
     PropKey = element(1, Prop),
     DelProps = lists:keydelete(PropKey, 1, OldProps),
     MergedProps = lists:merge(DelProps, [Prop]),
-    Cs2 = Cs#cstruct{user_properties = MergedProps},
-    verify_cstruct(Cs2),
+    Cs2 = verify_cstruct(Cs#cstruct{user_properties = MergedProps}),
     [{op, write_property, cs2list(Cs2), Prop} |
      make_write_table_properties(Tab, Props, Cs2)];
 make_write_table_properties(_Tab, [], _Cs) ->
@@ -1617,12 +1673,22 @@ do_read_table_property(Tab, Key) ->
 		      [];
 		 (_Other, Acc) ->
 		      Acc
-	      end, [], Store),
-    case lists:keysearch(Key, 1, Props) of
-	{value, Property} ->
-	    Property;
-	false ->
-	    undefined
+	      end, undefined, Store),
+    case Props of
+        undefined ->
+            get_tid_ts_and_lock(Tab, read),
+            try ets:lookup_element(mnesia_gvar, {Tab,user_property,Key}, 2)
+            catch
+                error:_ ->
+                    undefined
+            end;
+        _ when is_list(Props) ->
+            case lists:keysearch(Key, 1, Props) of
+                {value, Property} ->
+                    Property;
+                false ->
+                    undefined
+            end
     end.
 
 
@@ -1681,8 +1747,7 @@ make_delete_table_properties(Tab, PropKeys) ->
 make_delete_table_properties(Tab, [PropKey | PropKeys], Cs) ->
     OldProps = Cs#cstruct.user_properties,
     Props = lists:keydelete(PropKey, 1, OldProps),
-    Cs2 = Cs#cstruct{user_properties = Props},
-    verify_cstruct(Cs2),
+    Cs2 = verify_cstruct(Cs#cstruct{user_properties = Props}),
     [{op, delete_property, cs2list(Cs2), PropKey} |
      make_delete_table_properties(Tab, PropKeys, Cs2)];
 make_delete_table_properties(_Tab, [], _Cs) ->
@@ -2929,8 +2994,8 @@ do_make_merge_schema(Node, RemoteCs) ->
 %% invariants must be enforced in order to allow merge of cstructs.
 %%
 %% Returns a new cstruct or issues a fatal error
-merge_cstructs(Cs, RemoteCs, Force) ->
-    verify_cstruct(Cs),
+merge_cstructs(Cs0, RemoteCs, Force) ->
+    Cs = verify_cstruct(Cs0),
     case catch do_merge_cstructs(Cs, RemoteCs, Force) of
 	{'EXIT', {aborted, _Reason}} when Force == true ->
 	    Cs;
@@ -2942,15 +3007,15 @@ merge_cstructs(Cs, RemoteCs, Force) ->
 	    throw(Other)
     end.
 
-do_merge_cstructs(Cs, RemoteCs, Force) ->
-    verify_cstruct(RemoteCs),
+do_merge_cstructs(Cs, RemoteCs0, Force) ->
+    RemoteCs = verify_cstruct(RemoteCs0),
     Ns = mnesia_lib:uniq(mnesia_lib:cs_to_nodes(Cs) ++
 			 mnesia_lib:cs_to_nodes(RemoteCs)),
     {AnythingNew, MergedCs} =
 	merge_storage_type(Ns, false, Cs, RemoteCs, Force),
-    MergedCs2 = merge_versions(AnythingNew, MergedCs, RemoteCs, Force),
-    verify_cstruct(MergedCs2),
-    MergedCs2.
+    verify_cstruct(
+      merge_versions(AnythingNew, MergedCs, RemoteCs, Force)).
+
 
 merge_storage_type([N | Ns], AnythingNew, Cs, RemoteCs, Force) ->
     Local = mnesia_lib:cs_to_storage_type(N, Cs),
