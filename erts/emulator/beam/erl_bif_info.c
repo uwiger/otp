@@ -66,6 +66,7 @@ static Export *gather_gc_info_res_trap;
 
 /* Keep erts_system_version as a global variable for easy access from a core */
 static char erts_system_version[] = ("Erlang " ERLANG_OTP_RELEASE
+				     " " ERLANG_PATCHES
 				     " (erts-" ERLANG_VERSION ")"
 #if !HEAP_ON_C_STACK && !HALFWORD_HEAP
 				     " [no-c-stack-objects]"
