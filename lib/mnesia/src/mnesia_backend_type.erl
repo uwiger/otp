@@ -29,31 +29,28 @@
 %%
 behaviour_info(callbacks) ->
     [
-     {check_definition, 4},  % (TypeAlias, Tab, Nodes, Properties)
-     {create_table, 1},
-     {delete_table, 1},
-     {is_ram_only, 1},
-     {load_table, 5},
-     {table_info, 2},
-     %% -- accessor callbacks: see corresponding functions in mnesia_lib.erl
-     {db_chunk, 1},
-     {db_erase, 2},
-     {db_erase_tab, 1},
-     {db_first, 1},
-     {db_get, 2},
-     {db_init_chunk, 2},
-     {db_first, 1},
-     {db_last, 1},
-     {db_next_key, 2},
-     {db_prev_key, 2},
-     {db_put, 2},
-     {db_slot, 2},
-     {db_update_counter, 3},
-     {match_erase, 2},
-     {match_object, 2},
-     {repair_continuation, 2},
-     {safe_fixtable, 2},
-     {select, 1},
-     {select, 2},
-     {select_init, 3}
+     {check_definition, 4},    % (TypeAlias, Tab, Nodes, Properties)
+     {clear_table, 2},         % (TypeAlias, Tab)
+     {create_table, 3},        % (TypeAlias, Tab, Properties)
+     {delete, 3},              % (TypeAlias, Tab, Key)
+     {delete_table, 2},        % (TypeAlias, Tab)
+     {first, 2},               % (TypeAlias, Tab)
+     {fixtable, 3},            % (TypeAlias, Tab, Bool)
+     {info, 3},                % (TypeAlias, Tab, Item)
+     {insert, 3},              % (TypeAlias, Tab, Object)
+     {last, 2},                % (TypeAlias, Tab)
+     {load_table, 3},          % (TypeAlias, Tab, Reason)
+     {lookup, 3},              % (TypeAlias, Tab, Key)
+     {match_delete, 3},        % (TypeAlias, Tab, Pattern)
+     {match_object, 3},        % (TypeAlias, Tab, Pattern)
+     {next, 3},                % (TypeAlias, Tab, Key)
+     {prev, 3},                % (TypeAlias, Tab, Key)
+     {repair_continuation, 2}, % (Continuation, MatchSpec)
+     {select, 1},              % (Continuation)
+     {select, 3},              % (TypeAlias, Tab, Pattern)
+     {select, 4},              % (TypeAlias, Tab, MatchSpec, Limit)
+     {slot, 3},                % (TypeAlias, Tab, Pos)
+     {update_counter, 4},      % (TypeAlias, Tab, Counter, Val)
+     {validate_key, 6},        % (TypeAlias, Tab, RecName, Arity, Type, Key)
+     {validate_record, 6}      % (TypeAlias, Tab, RecName, Arity, Type, Obj)
     ].

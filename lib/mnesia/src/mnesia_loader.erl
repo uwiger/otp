@@ -140,7 +140,8 @@ do_get_disc_copy2(Tab, Reason, Storage, Type) when Storage == disc_only_copies -
 	    end
     end;
 
-do_get_disc_copy2(Tab, Reason, Storage = {external_copies, _Mod}, _Type) ->
+do_get_disc_copy2(Tab, Reason, Storage = {ext, Alias, Mod}, _Type) ->
+    ok = Mod:load_table(Alias, Tab, Reason),
     mnesia_index:init_index(Tab, Storage),
     set({Tab, load_node}, node()),
     set({Tab, load_reason}, Reason),
@@ -290,6 +291,10 @@ start_remote_sender(Node,Tab,Storage) ->
 	    {SenderPid, TabSize, false};
 	{SenderPid, {first, TabSize, DetsData}} ->
 	    {SenderPid, TabSize, DetsData};
+	{SenderPid, Msg} when element(1, Storage) == ext ->
+	    {ext, Alias, Mod} = Storage,
+	    {Sz, Data} = Mod:receiver_first_message(SenderPid, Msg, Alias, Tab),
+	    {SenderPid, Sz, Data};
 	%% Protocol conversion hack
 	{copier_done, Node} ->
 	    verbose("Sender of table ~p crashed on node ~p ~n", [Tab, Node]),
@@ -394,9 +399,9 @@ create_table(Tab, TabSize, Storage, Cs) ->
 		Else ->
 		    Else
 	    end;
-        element(1, Storage) == external_copies ->
-            { _, Mod } = Storage,
-            case mnesia_monitor:unsafe_create_external(Tab, Mod, Cs) of
+        element(1, Storage) == ext ->
+            {_, Alias, Mod} = Storage,
+            case mnesia_monitor:unsafe_create_external(Tab, Alias, Mod, Cs) of
                 Tab ->
                     {Storage, Tab};
                 Else ->
@@ -472,15 +477,26 @@ get_data(Pid, TabRec) ->
 	    get_data(Pid, TabRec)
     end.
 
-init_table(Tab, {external_copies,Mod}, Fun, false, false, Sender) ->
-    case catch Mod:init_table(Tab, Fun, Sender) of
-	true ->
-	    ok;
-        ok ->           % "ets-style" is true, "dets-style" is ok;
-                        % be nice and accept both :)
-            ok;
-	{'EXIT', Else} -> Else
-    end;
+ext_init_table(Alias, Mod, Tab, Fun, Sender) ->
+    case Fun(read) of
+	{Data, NewFun} ->
+	    ok = Mod:receive_data(Data, Alias, Tab),
+	    ext_init_table(Alias, Mod, Tab, NewFun, Sender);
+	end_of_input ->
+	    Mod:receive_done(Alias, Tab, Sender),
+	    ok = Fun(close)
+    end.
+
+init_table(Tab, {ext,Alias,Mod}, Fun, false, false, Sender) ->
+    ext_init_table(Alias, Mod, Tab, Fun, Sender);
+    %% case catch Mod:init_table(Alias, Tab, Fun, Sender) of
+    %% 	true ->
+    %% 	    ok;
+    %%     ok ->           % "ets-style" is true, "dets-style" is ok;
+    %%                     % be nice and accept both :)
+    %%         ok;
+    %% 	{'EXIT', Else} -> Else
+    %% end;
 init_table(Tab, disc_only_copies, Fun, false, DetsInfo,Sender) ->
     ErtsVer = erlang:system_info(version),
     case DetsInfo of
@@ -621,8 +637,8 @@ down(Tab, Storage) ->
 	    TmpFile = mnesia_lib:tab2tmp(Tab),
 	    mnesia_lib:dets_sync_close(Tab),
 	    file:delete(TmpFile);
-        {external_copies, Mod} ->
-            catch Mod:delete_table(Tab)
+        {ext, Alias, Mod} ->
+            catch Mod:delete_table(Alias, Tab)
     end,
     mnesia_checkpoint:tm_del_copy(Tab, node()),
     mnesia_controller:sync_del_table_copy_whereabouts(Tab, node()),
@@ -674,8 +690,8 @@ db_put({disc_copies, Tab}, Val) ->
     true = ?ets_insert(Tab, Val);
 db_put({disc_only_copies, Tab}, Val) ->
     ok = dets:insert(Tab, Val);
-db_put({{external_copies, Mod}, Tab}, Val) ->
-    ok = Mod:insert(Tab, Val).
+db_put({{ext, Alias, Mod}, Tab}, Val) ->
+    ok = Mod:insert(Alias, Tab, Val).
 
 %% This code executes at the remote site where the data is
 %% executes in a special copier process.
@@ -694,51 +710,60 @@ send_table(Pid, Tab, RemoteS) ->
 	unknown ->
 	    {error, {no_exists, Tab}};
 	Storage ->
-	    %% Send first
-	    TabSize = mnesia:table_info(Tab, size),	    
-	    Pconvert = mnesia_monitor:needs_protocol_conversion(node(Pid)),
-	    KeysPerTransfer = calc_nokeys(Storage, Tab),
-	    ChunkData = dets:info(Tab, bchunk_format),
+	    do_send_table(Pid, Tab, Storage, RemoteS)
+    end.
 
-	    UseDetsChunk = 
-		Storage == RemoteS andalso 
-		Storage == disc_only_copies andalso 
-		ChunkData /= undefined andalso
-		Pconvert == false,	    
-	    if 
-		UseDetsChunk == true ->
-		    DetsInfo = erlang:system_info(version),
-		    Pid ! {self(), {first, TabSize, {DetsInfo, ChunkData}}};
-		true  ->
-		    Pid ! {self(), {first, TabSize}}
-	    end,
-	    
-	    %% Debug info
-	    put(mnesia_table_sender, {Tab, node(Pid), Pid}),
-	    {Init, Chunk} = reader_funcs(UseDetsChunk, Tab, Storage, KeysPerTransfer),
-	    
-	    SendIt = fun() ->
-			     prepare_copy(Pid, Tab, Storage),
-			     send_more(Pid, 1, Chunk, Init(), Tab, Pconvert),
-			     finish_copy(Pid, Tab, Storage, RemoteS)
-		     end,
-
-	    case catch SendIt() of
-		receiver_died ->
-		    cleanup_tab_copier(Pid, Storage, Tab),
-		    unlink(whereis(mnesia_tm)),
-		    ok;
-		{_, receiver_died} ->
-		    unlink(whereis(mnesia_tm)),
-		    ok;
-		{atomic, no_more} ->
-		    unlink(whereis(mnesia_tm)),
-		    ok;
-		Reason ->
-		    cleanup_tab_copier(Pid, Storage, Tab),
-		    unlink(whereis(mnesia_tm)),
-		    {error, Reason}
-	    end
+do_send_table(Pid, Tab, Storage, RemoteS) ->
+    Pconvert = mnesia_monitor:needs_protocol_conversion(node(Pid)),
+    {Init, Chunk} =
+	case Storage of
+	    {ext, Alias, Mod} ->
+		Mod:sender_init(Alias, Tab, RemoteS, Pid);
+	    Storage ->
+		%% Send first
+		TabSize = mnesia:table_info(Tab, size),	    
+		KeysPerTransfer = calc_nokeys(Storage, Tab),
+		ChunkData = dets:info(Tab, bchunk_format),
+		
+		UseDetsChunk = 
+		    Storage == RemoteS andalso 
+		    Storage == disc_only_copies andalso 
+		    ChunkData /= undefined andalso
+		    Pconvert == false,	    
+		if 
+		    UseDetsChunk == true ->
+			DetsInfo = erlang:system_info(version),
+			Pid ! {self(), {first, TabSize, {DetsInfo, ChunkData}}};
+		    true  ->
+			Pid ! {self(), {first, TabSize}}
+		end,
+		{_I, _C} =
+		    reader_funcs(UseDetsChunk, Tab, Storage, KeysPerTransfer)
+	end,
+    %% Debug info
+    put(mnesia_table_sender, {Tab, node(Pid), Pid}),
+    
+    SendIt = fun() ->
+		     prepare_copy(Pid, Tab, Storage),
+		     send_more(Pid, 1, Chunk, Init(), Tab, Pconvert),
+		     finish_copy(Pid, Tab, Storage, RemoteS)
+	     end,
+    
+    case catch SendIt() of
+	receiver_died ->
+	    cleanup_tab_copier(Pid, Storage, Tab),
+	    unlink(whereis(mnesia_tm)),
+	    ok;
+	{_, receiver_died} ->
+	    unlink(whereis(mnesia_tm)),
+	    ok;
+	{atomic, no_more} ->
+	    unlink(whereis(mnesia_tm)),
+	    ok;
+	Reason ->
+	    cleanup_tab_copier(Pid, Storage, Tab),
+	    unlink(whereis(mnesia_tm)),
+	    {error, Reason}
     end.
 		
 prepare_copy(Pid, Tab, Storage) ->

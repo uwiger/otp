@@ -211,8 +211,9 @@ init_indecies(Tab, Storage, PosList) ->
 	    ignore;
 	disc_only_copies ->
 	    init_disc_index(Tab, PosList);
-        {external_copies, Mod} ->
-            Mod:init_index(Tab, PosList);
+        {ext, Alias, Mod} ->
+            %% Mod:init_index(Alias, Tab, PosList);
+	    ignore;
 	ram_copies ->
 	    make_ram_index(Tab, PosList);
 	disc_copies ->

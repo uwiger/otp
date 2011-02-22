@@ -51,6 +51,7 @@ MODULES= \
 	mnesia_dumper\
 	mnesia_event \
 	mnesia_ext_filesystem \
+	mnesia_ext_sup \
 	mnesia_frag \
 	mnesia_frag_hash \
 	mnesia_frag_old_hash \
@@ -65,6 +66,7 @@ MODULES= \
 	mnesia_recover \
 	mnesia_registry \
 	mnesia_schema\
+	mnesia_sext \
 	mnesia_snmp_hook \
 	mnesia_snmp_sup \
 	mnesia_subscr \

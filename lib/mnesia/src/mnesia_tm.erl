@@ -1302,9 +1302,9 @@ prepare_node(Node, Storage, [Item | Items], Rec, Kind) when Kind /= schema ->
 	    disc_only_copies ->
 		Rec#commit{disc_only_copies =
 			   [Item | Rec#commit.disc_only_copies]};
-	    {external_copies, _} ->
+	    {ext, Alias, Mod} ->
 		Rec#commit{external_copies =
-			   [Item | Rec#commit.external_copies]}
+			   [{{ext, Alias, Mod}, Item} | Rec#commit.external_copies]}
 	end,
     prepare_node(Node, Storage, Items, Rec2, Kind);
 prepare_node(_Node, _Storage, Items, Rec, Kind) 
@@ -1738,9 +1738,15 @@ do_commit(Tid, C, DumperMode) ->
     R2 = do_update(Tid, ram_copies, C#commit.ram_copies, R),
     R3 = do_update(Tid, disc_copies, C#commit.disc_copies, R2),
     R4 = do_update(Tid, disc_only_copies, C#commit.disc_only_copies, R3),
-    R5 = do_update(Tid, external_copies, C#commit.external_copies, R4),
+    R5 = do_update_ext(Tid, C#commit.external_copies, R4),
     mnesia_subscr:report_activity(Tid),
     R5.
+
+%% This could/should be optimized
+do_update_ext(Tid, Ops, OldRes) ->
+    lists:foldl(fun({{ext, _,_} = Storage, Op}, R) ->
+			do_update(Tid, Storage, [Op], R)
+		end, OldRes, Ops).
 
 %% Update the items
 do_update(Tid, Storage, [Op | Ops], OldRes) ->

@@ -640,9 +640,9 @@ handle_call({update,Fun}, From, State) ->
 
 handle_call(get_cstructs, From, State) ->
     Tabs = val({schema, tables}),
-    Cstructs = [val({T, cstruct}) || T <- Tabs],
+    Cstructs = [val({T, cstruct}) || T <- Tabs, T /= schema],
     Running = val({current, db_nodes}),
-    reply(From, {cstructs, Cstructs, Running}), 
+    reply(From, {cstructs, [val({schema,cstruct})|Cstructs], Running}), 
     noreply(State);
 
 handle_call({schema_is_merged, [], late_merge, []}, From, 

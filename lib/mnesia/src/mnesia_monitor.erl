@@ -31,7 +31,7 @@
 	 init/0,
 	 mktab/2,
 	 unsafe_mktab/2,
-         unsafe_create_external/3,
+         unsafe_create_external/4,
 	 mnesia_down/2,
 	 needs_protocol_conversion/1,
 	 negotiate_protocol/1,
@@ -125,8 +125,8 @@ close_log(Name) ->
 unsafe_close_log(Name) ->
     unsafe_call({unsafe_close_log, Name}).
 
-unsafe_create_external(Tab, Mod, Cs) ->
-    unsafe_call({unsafe_create_external, Tab, Mod, Cs}).
+unsafe_create_external(Tab, Alias, Mod, Cs) ->
+    unsafe_call({unsafe_create_external, Tab, Alias, Mod, Cs}).
 
 disconnect(Node) ->
     cast({disconnect, Node}).
@@ -401,8 +401,8 @@ handle_call({unsafe_close_log, Name}, _From, State) ->
     disk_log:close(Name),
     {reply, ok, State};
 
-handle_call({unsafe_create_external, Tab, Mod, Cs}, _From, State) ->
-    case catch Mod:create_table(Tab, Cs) of
+handle_call({unsafe_create_external, Tab, Alias, Mod, Cs}, _From, State) ->
+    case catch Mod:create_table(Alias, Tab, mnesia_schema:cs2list(Cs)) of
 	{'EXIT', ExitReason} ->
 	    {reply, {error, ExitReason}, State};
 	Reply ->
@@ -689,7 +689,8 @@ env() ->
      pid_sort_order,
      no_table_loaders,
      dc_dump_limit,
-     send_compressed
+     send_compressed,
+     filesystem_locations
     ].
 
 default_env(access_module) -> 
@@ -734,7 +735,10 @@ default_env(no_table_loaders) ->
 default_env(dc_dump_limit) ->
     4;
 default_env(send_compressed) ->
-    0.
+    0;
+default_env(filesystem_locations) ->
+    [].
+
 
 check_type(Env, Val) ->
     case catch do_check_type(Env, Val) of
@@ -781,7 +785,8 @@ do_check_type(pid_sort_order, "standard") -> standard;
 do_check_type(pid_sort_order, _) -> false;
 do_check_type(no_table_loaders, N) when is_integer(N), N > 0 -> N;
 do_check_type(dc_dump_limit,N) when is_number(N), N > 0 -> N;
-do_check_type(send_compressed, L) when is_integer(L), L >= 0, L =< 9 -> L.
+do_check_type(send_compressed, L) when is_integer(L), L >= 0, L =< 9 -> L;
+do_check_type(filesystem_locations, L) when is_list(L) -> L.
 
 bool(true) -> true;
 bool(false) -> false.
