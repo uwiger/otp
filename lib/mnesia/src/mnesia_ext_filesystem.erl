@@ -24,7 +24,6 @@
 
 -module(mnesia_ext_filesystem).
 -behaviour(mnesia_backend_type).
--compile(export_all).
 
 -export([register/0]).
 %%
@@ -76,10 +75,10 @@
 
 -include("mnesia.hrl").
 -include_lib("kernel/include/file.hrl").
--record(info, {tab,
-	       key,
-	       fullname,
-	       recname}).
+%% -record(info, {tab,
+%% 	       key,
+%% 	       fullname,
+%% 	       recname}).
 
 -record(sel, {alias,
 	      tab,
@@ -273,23 +272,23 @@ do_validate_key(raw_fs_copies, Tab, Key) ->
 	    mnesia:abort({bad_type, [Tab, Key]})
     end.
 
-decode_key(Key) ->
-    sext_decode(unsplit_key(Key)).
+%% decode_key(Key) ->
+%%     sext_decode(unsplit_key(Key)).
 
-sext_encode(K) ->
-    mnesia_sext:encode_sb32(K).
+%% sext_encode(K) ->
+%%     mnesia_sext:encode_sb32(K).
 
-sext_decode(K) ->
-    mnesia_sext:decode_sb32(K).
+%% sext_decode(K) ->
+%%     mnesia_sext:decode_sb32(K).
 
-split_key(<<A,B,C,T/binary>>) ->
-    <<A,B,C,$/, (split_key(T))/binary>>;
-split_key(Bin) ->
-    Bin.
+%% split_key(<<A,B,C,T/binary>>) ->
+%%     <<A,B,C,$/, (split_key(T))/binary>>;
+%% split_key(Bin) ->
+%%     Bin.
 
-unsplit_key(Bin) ->
-    << <<C>> || <<C>> <= Bin,
-		C =/= $/ >>.
+%% unsplit_key(Bin) ->
+%%     << <<C>> || <<C>> <= Bin,
+%% 		C =/= $/ >>.
 
 
 create_table(_Alias, Tab, _Props) ->
@@ -371,11 +370,11 @@ default_mountpoint(Tab) ->
     Dir = mnesia_monitor:get_env(dir),
     filename:join(Dir, atom_to_list(Tab) ++ ".extfs").
 
-pos(A, Attrs) ->  pos(A, Attrs, 1).
+%% pos(A, Attrs) ->  pos(A, Attrs, 1).
 
-pos(A, [A|_], P) ->  P;
-pos(A, [_|T], P) ->  pos(A, T, P+1);
-pos(_, [], _) ->     0.
+%% pos(A, [A|_], P) ->  P;
+%% pos(A, [_|T], P) ->  pos(A, T, P+1);
+%% pos(_, [], _) ->     0.
 
 
 my_file_info(F) ->
@@ -450,6 +449,12 @@ fullname(_Tab, Key0, MP) ->
     filename:join([MP, Key]).
 
 
+info(_Alias, Tab, memory) ->
+    try ets:info(tab_name(icache, Tab), memory)
+    catch
+	error:_ ->
+	    0
+    end;
 info(_Alias, Tab, Item) ->
     try ets:lookup(tab_name(icache, Tab), {info,Item}) of
 	[{_, Value}] ->
@@ -462,47 +467,47 @@ info(_Alias, Tab, Item) ->
     end.
 	
 
-read_file_info(Tab, Key) ->
-    Fname = fullname(Tab, Key),
-    Info = #info{tab = Tab,
-		 key = Key,
-		 fullname = Fname,
-		 recname = mnesia:table_info(Tab, record_name)},
-    try read_file_info1(Fname, Info, 1)
-    catch
-	error:Reason ->
-	    mnesia:abort({Reason, erlang:get_stacktrace()})
-    end.
+%% read_file_info(Tab, Key) ->
+%%     Fname = fullname(Tab, Key),
+%%     Info = #info{tab = Tab,
+%% 		 key = Key,
+%% 		 fullname = Fname,
+%% 		 recname = mnesia:table_info(Tab, record_name)},
+%%     try read_file_info1(Fname, Info, 1)
+%%     catch
+%% 	error:Reason ->
+%% 	    mnesia:abort({Reason, erlang:get_stacktrace()})
+%%     end.
 
-read_file_info1(Fname, Info, X) when X < 100 ->
-    case file:read_link_info(Fname) of
-	{ok, #file_info{type = symlink}} ->
-	    case file:read_link(Fname) of
-		{ok, NewLink} ->
-		    read_file_info1(NewLink, X+1, Info);
-		Error ->
-		    mnesia:abort({Error, Info})
-	    end;
-	{ok, #file_info{} = FI} ->
-	    Attrs = tl(tuple_to_list(FI)),
-	    Read = fun() ->
-			   {ok, Bin} = file:read_file(Fname),
-			   Bin
-		   end,
-	    Tup = list_to_tuple([Fname, Info#info.key, data | Attrs]),
-	    {_, Map} = mnesia:read_table_property(
-			 Info#info.tab, rofs_attr_map),
-	    Rec = list_to_tuple([Info#info.recname |
-				 lists:map(
-				   fun(3) ->
-					   Read();  % fetch the data
-				      (P) ->
-					   element(P, Tup)
-				   end, Map)]),
-	    [Rec];	    
-	{error, enoent} ->
-	    []
-    end.
+%% read_file_info1(Fname, Info, X) when X < 100 ->
+%%     case file:read_link_info(Fname) of
+%% 	{ok, #file_info{type = symlink}} ->
+%% 	    case file:read_link(Fname) of
+%% 		{ok, NewLink} ->
+%% 		    read_file_info1(NewLink, X+1, Info);
+%% 		Error ->
+%% 		    mnesia:abort({Error, Info})
+%% 	    end;
+%% 	{ok, #file_info{} = FI} ->
+%% 	    Attrs = tl(tuple_to_list(FI)),
+%% 	    Read = fun() ->
+%% 			   {ok, Bin} = file:read_file(Fname),
+%% 			   Bin
+%% 		   end,
+%% 	    Tup = list_to_tuple([Fname, Info#info.key, data | Attrs]),
+%% 	    {_, Map} = mnesia:read_table_property(
+%% 			 Info#info.tab, rofs_attr_map),
+%% 	    Rec = list_to_tuple([Info#info.recname |
+%% 				 lists:map(
+%% 				   fun(3) ->
+%% 					   Read();  % fetch the data
+%% 				      (P) ->
+%% 					   element(P, Tup)
+%% 				   end, Map)]),
+%% 	    [Rec];	    
+%% 	{error, enoent} ->
+%% 	    []
+%%     end.
 
 lookup(Alias, Tab, Key0) ->
     Key = do_validate_key(fs_copies, Tab, Key0),
@@ -563,26 +568,26 @@ select(Alias, Tab, Ms, Limit) when is_integer(Limit) ->
     MP = data_mountpoint(Tab),
     do_select(Alias, Tab, MP, Ms, Limit).
 
-remove_first_slash("/" ++ Str) ->
-    Str;
-remove_first_slash(Str) ->
-    Str.
+%% remove_first_slash("/" ++ Str) ->
+%%     Str;
+%% remove_first_slash(Str) ->
+%%     Str.
 
-keypat_to_match(Str) ->
-    keypat_to_match(Str, [], []).
+%% keypat_to_match(Str) ->
+%%     keypat_to_match(Str, [], []).
 
-keypat_to_match("/" ++ Str, DirAcc, Dirs) ->
-    keypat_to_match(Str, [], [lists:reverse(DirAcc)|Dirs]);
-keypat_to_match("." ++ T, DirAcc, Dirs) ->
-    keypat_to_match(T, ".\\" ++ DirAcc, Dirs);
-keypat_to_match([H|T], DirAcc, Dirs) when is_integer(H) ->
-    keypat_to_match(T, [H|DirAcc], Dirs);
-keypat_to_match([H|T], DirAcc, Dirs) when is_atom(H) ->
-    keypat_to_match(T, "." ++ DirAcc, Dirs);
-keypat_to_match('_', DirAcc, Dirs) ->
-    {open, lists:reverse(Dirs), lists:reverse("*." ++ DirAcc)};
-keypat_to_match([], DirAcc, Dirs) ->
-    {closed, lists:reverse(Dirs), lists:reverse(DirAcc)}.
+%% keypat_to_match("/" ++ Str, DirAcc, Dirs) ->
+%%     keypat_to_match(Str, [], [lists:reverse(DirAcc)|Dirs]);
+%% keypat_to_match("." ++ T, DirAcc, Dirs) ->
+%%     keypat_to_match(T, ".\\" ++ DirAcc, Dirs);
+%% keypat_to_match([H|T], DirAcc, Dirs) when is_integer(H) ->
+%%     keypat_to_match(T, [H|DirAcc], Dirs);
+%% keypat_to_match([H|T], DirAcc, Dirs) when is_atom(H) ->
+%%     keypat_to_match(T, "." ++ DirAcc, Dirs);
+%% keypat_to_match('_', DirAcc, Dirs) ->
+%%     {open, lists:reverse(Dirs), lists:reverse("*." ++ DirAcc)};
+%% keypat_to_match([], DirAcc, Dirs) ->
+%%     {closed, lists:reverse(Dirs), lists:reverse(DirAcc)}.
 
 
 repair_continuation(Cont, _Ms) ->
@@ -781,16 +786,6 @@ unordered_split(X, [H|T], Acc) ->
 unordered_split(_X, [], Acc) ->
     {Acc, []}.
 
-pick_with(F, [H|T]) ->
-    case F(H) of
-	true  -> {value, H};
-	false -> pick_with(F, T)
-    end;
-pick_with(_, []) ->
-    false.
-
-
-
 slot(_Alias, _Tab, _Pos) ->
     ok.
 
@@ -800,13 +795,13 @@ update_counter(_Alias, _Tab, _C, _Val) ->
 clear_table(_Alias, _Tab) ->
     ok.
 
-fold(Alias, Tab, Fun, Acc, N) ->
-    fold(select(Alias, Tab, [{'_',[],['$_']}], N), Fun, Acc).
+%% fold(Alias, Tab, Fun, Acc, N) ->
+%%     fold(select(Alias, Tab, [{'_',[],['$_']}], N), Fun, Acc).
 
-fold('$end_of_table', _, Acc) ->
-    Acc;
-fold({L, Cont}, Fun, Acc) ->
-    fold(select(Cont), Fun, lists:foldl(Fun, Acc, L)).
+%% fold('$end_of_table', _, Acc) ->
+%%     Acc;
+%% fold({L, Cont}, Fun, Acc) ->
+%%     fold(select(Cont), Fun, lists:foldl(Fun, Acc, L)).
 
 is_key_prefix(File, Fun) when is_function(Fun) ->
     Fun(File);
@@ -1061,7 +1056,7 @@ code_change(_FromVsn, St, _Extra) ->
 terminate(_Reason, _St) ->
     ok.
 
-default_info(size) -> 0;
+default_info(size)   -> 0;
 default_info(_) -> undefined.
 
 update_size_info(#st{alias = Alias, tab = Tab, data_mp = MP} = St) ->    
@@ -1070,7 +1065,7 @@ update_size_info(#st{alias = Alias, tab = Tab, data_mp = MP} = St) ->
     Pat = [{'_',[],[1]}],
     Sz = sum_size(do_select(Alias, Tab, MP, Pat, 100), 0),
     io:fwrite("Size of ~p is ~p~n", [Tab, Sz]),
-    write_info({info,size}, Sz, St),
+    write_info(size, Sz, St),
     St.
 
 sum_size({L, Cont}, Acc) ->

@@ -2040,7 +2040,7 @@ storage_count(T, {U, R, D, DO, Ext}) ->
 	ram_copies -> {U, [T | R], D, DO, Ext};
 	disc_copies -> {U, R, [T | D], DO, Ext};
 	disc_only_copies -> {U, R, D, [T | DO], Ext};
-        {external_copies, _} -> {U, R, D, DO, [T | Ext]}
+        {ext, _, _} -> {U, R, D, DO, [T | Ext]}
     end.
 
 system_info(Item) ->

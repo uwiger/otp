@@ -1800,10 +1800,10 @@ info([Tab | Tail]) ->
 			dets:info(Tab, size), 
 			dets:info(Tab, file_size),
 			"bytes on disc");
-        {external_copies, Mod} ->
+        {ext, Alias, Mod} ->
             info_format(Tab,
-                        Mod:info(Tab, size),
-                        Mod:info(Tab, memory),
+                        Mod:info(Alias, Tab, size),
+                        Mod:info(Alias, Tab, memory),
                         "words of mem");
 	_ ->
 	    info_format(Tab, 
