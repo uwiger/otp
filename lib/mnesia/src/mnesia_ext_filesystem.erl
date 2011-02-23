@@ -593,11 +593,23 @@ select(Alias, Tab, Ms, Limit) when is_integer(Limit) ->
 repair_continuation(Cont, _Ms) ->
     Cont.
 
-select(Cont) when is_function(Cont, 0) ->
-    case erlang:fun_info(Cont, module) of
-	{_, ?MODULE} ->
-	    Cont();
-	_ ->
+select(C) ->
+    Cont = get_sel_cont(C),
+    Cont().
+
+get_sel_cont(C) ->
+    Cont = case C of
+	       {?MODULE, C1} -> C1;
+	       _ -> C
+	   end,
+    if is_function(Cont, 0) ->
+	    case erlang:fun_info(Cont, module) of
+		{_, ?MODULE} ->
+		    Cont;
+		_ ->
+		    erlang:error(badarg)
+	    end;
+       true ->
 	    erlang:error(badarg)
     end.
 
@@ -896,7 +908,7 @@ follow_file(Filename, Fs, Dir, Sel, Acc, N, C) ->
     case list_dir(Filename, Sel#sel.type) of
 	{ok, Fs1} ->
 	    C1 = fun(Acc1, N1) ->
-			 do_fold(Fs, Filename, Sel, Acc1, N1, C)
+			 do_fold(Fs, Dir, Sel, Acc1, N1, C)
 		 end,
 	    do_fold(Fs1, Filename, Sel, Acc, N, C1);
 	{error, enotdir} ->
@@ -905,7 +917,9 @@ follow_file(Filename, Fs, Dir, Sel, Acc, N, C) ->
 		    do_fold(Fs, Dir, Sel, [Result|Acc], decr(N), C);
 		nomatch ->
 		    do_fold(Fs, Dir, Sel, Acc, N, C)
-	    end
+	    end;
+	{error, enoent} ->
+	    do_fold(Fs, Dir, Sel, Acc, N, C)
     end.
 
 list_dir(Dir, Type) ->
