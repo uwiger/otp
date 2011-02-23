@@ -56,7 +56,7 @@
         end).
 %%-define(dbg(F,A),no_debug).
 
--include_lib("eunit/include/eunit.hrl").
+%% -include_lib("eunit/include/eunit.hrl").
 
 
 %% @spec encode(T::term()) -> binary()
@@ -825,6 +825,9 @@ c2sb32(I) when 10 =< I, I =< 31 -> $A + I - 10.
 sb322c(I) when $0 =< I, I =< $9 -> I - $0;
 sb322c(I) when $A =< I, I =< $V -> I - $A + 10.
 
+
+-ifdef(EUNIT_HRL).
+
 encode_test() ->
     L = test_list(),
     [{I,I} = {I,catch decode(encode(I))} || I <- L].
@@ -862,3 +865,5 @@ test_list() ->
      make_ref(),
      make_ref()|
      lists:sublist(erlang:ports(),1,2)].
+
+-endif.
