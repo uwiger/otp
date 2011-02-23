@@ -589,8 +589,8 @@ repair_continuation(Cont, _Ms) ->
     Cont.
 
 select(Cont) when is_function(Cont, 0) ->
-    case erlang:fun_info(Cont, module_name) of
-	?MODULE ->
+    case erlang:fun_info(Cont, module) of
+	{_, ?MODULE} ->
 	    Cont();
 	_ ->
 	    erlang:error(badarg)
@@ -886,9 +886,8 @@ do_fold([], _, _, Acc, N, C) ->
     C(Acc, N);
 do_fold(Fs, Dir, #sel{limit = Lim} = Sel, Acc, 0, C) ->
     {lists:reverse(Acc), fun() ->
-		  io:fwrite("Continuation fires...~n", []),
-	  do_fold(Fs, Dir, Sel, [], Lim, C)
-	  end};
+				 do_fold(Fs, Dir, Sel, [], Lim, C)
+			 end};
 do_fold([F|Fs], Dir, #sel{keypat = KeyPat} = Sel, Acc, N, C) ->
     Filename = filename:join(Dir, F),
     case is_key_prefix(Filename, KeyPat) of
@@ -902,7 +901,6 @@ follow_file(Filename, Fs, Dir, Sel, Acc, N, C) ->
     case list_dir(Filename, Sel#sel.type) of
 	{ok, Fs1} ->
 	    C1 = fun(Acc1, N1) ->
-			 io:fwrite("back from ~p~n", [Filename]),
 			 do_fold(Fs, Filename, Sel, Acc1, N1, C)
 		 end,
 	    do_fold(Fs1, Filename, Sel, Acc, N, C1);
@@ -1006,12 +1004,13 @@ init({Alias, Tab, MP}) ->
     mnesia_lib:set({Tab, mountpoint}, MP),
     Ets = ets:new(mk_tab_name(icache,Tab), [set, protected, named_table]),
     dets:to_ets(Dets, Ets),
-    {ok, #st{ets = Ets,
+    St = #st{ets = Ets,
 	     dets = Dets,
 	     mp = MP,
 	     data_mp = filename:join(MP, "data"),
 	     alias = Alias,
-	     tab = Tab}}.
+	     tab = Tab},
+    {ok, update_size_info(St)}.
 
 open_dets(_Alias, Tab, _MP) ->
     Dir = info_mountpoint(Tab),
@@ -1064,7 +1063,21 @@ terminate(_Reason, _St) ->
 
 default_info(size) -> 0;
 default_info(_) -> undefined.
-    
+
+update_size_info(#st{alias = Alias, tab = Tab, data_mp = MP} = St) ->    
+    PrevInfo = info(Alias, Tab, size),
+    io:fwrite("Updating size info of Tab = ~p (~p)...~n", [Tab, PrevInfo]),
+    Pat = [{'_',[],[1]}],
+    Sz = sum_size(do_select(Alias, Tab, MP, Pat, 100), 0),
+    io:fwrite("Size of ~p is ~p~n", [Tab, Sz]),
+    write_info({info,size}, Sz, St),
+    St.
+
+sum_size({L, Cont}, Acc) ->
+    sum_size(select(Cont), lists:sum(L) + Acc);
+sum_size('$end_of_table', Acc) ->
+    Acc.
+
 
 incr_size(#st{ets = Ets} = St, Incr) ->
     case ets:lookup(Ets, {info,size}) of
