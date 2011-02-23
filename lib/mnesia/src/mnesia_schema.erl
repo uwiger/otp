@@ -1474,7 +1474,7 @@ make_change_table_copy_type(Tab, Node, ToS) ->
 	    ensure_active(Cs)
     end,
 
-    Cs2 = verify_cstruct(new_cs(Cs, Node, FromS, del)),
+    Cs2 = new_cs(Cs, Node, FromS, del),
     Cs3 = verify_cstruct(new_cs(Cs2, Node, ToS, add)),
     
     [{op, change_table_copy_type, Node, FromS, ToS, cs2list(Cs3)}].

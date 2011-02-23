@@ -554,8 +554,8 @@ write_to_store(Tab, Store, Oid, Val) ->
 	_  ->
 	    ?ets_delete(Store, Oid),
 	    ?ets_insert(Store, {Oid, Val, write})
-    end.
-
+    end,
+    ok.
 
 delete({Tab, Key}) ->
     delete(Tab, Key, write);
