@@ -477,18 +477,18 @@ get_data(Pid, TabRec) ->
 	    get_data(Pid, TabRec)
     end.
 
-ext_init_table(Alias, Mod, Tab, Fun, Sender) ->
+ext_init_table(Alias, Mod, Tab, Fun, State, Sender) ->
     case Fun(read) of
 	{Data, NewFun} ->
-	    ok = Mod:receive_data(Data, Alias, Tab),
-	    ext_init_table(Alias, Mod, Tab, NewFun, Sender);
+	    {ok,NewState} = Mod:receive_data(Data, Alias, Tab, Sender, State),
+	    ext_init_table(Alias, Mod, Tab, NewFun, NewState, Sender);
 	end_of_input ->
-	    Mod:receive_done(Alias, Tab, Sender),
+	    Mod:receive_done(Alias, Tab, Sender, State),
 	    ok = Fun(close)
     end.
 
-init_table(Tab, {ext,Alias,Mod}, Fun, false, false, Sender) ->
-    ext_init_table(Alias, Mod, Tab, Fun, Sender);
+init_table(Tab, {ext,Alias,Mod}, Fun, false, State, Sender) ->
+    ext_init_table(Alias, Mod, Tab, Fun, State, Sender);
     %% case catch Mod:init_table(Alias, Tab, Fun, Sender) of
     %% 	true ->
     %% 	    ok;

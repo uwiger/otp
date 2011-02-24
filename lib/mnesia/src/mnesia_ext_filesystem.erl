@@ -35,8 +35,8 @@
 
 -export([sender_init/4,
 	 receiver_first_message/4,
-	 receive_data/3,
-	 receive_done/3
+	 receive_data/5,
+	 receive_done/4
 	]).
 
 %% low-level accessor callbacks.
@@ -97,12 +97,28 @@
 	     alias,
 	     tab}).
 
+
 register() ->
     mnesia_schema:schema_transaction(
       fun() ->
 	      mnesia_schema:do_add_backend_type(fs_copies, ?MODULE),
 	      mnesia_schema:do_add_backend_type(raw_fs_copies, ?MODULE)
       end).
+
+
+%% ===========================================================
+%% Table synch protocol
+%% Callbacks are
+%% Sender side:
+%%  1. sender_init(Alias, Tab, RemoteStorage, ReceiverPid) ->
+%%        {InitFun :: fun() -> {Recs, Cont} | '$end_of_table',
+%%         ChunkFun :: fun(Cont) -> {Recs, Cont1} | '$end_of_table'}
+%%  2. InitFun() is called
+%%  3. ChunkFun(Cont) is called repeatedly until done
+%%
+%% Receiver side:
+%% 1. receiver_first_message(SenderPid, Msg, Alias, Tab) ->
+%%         {Size::integer(), State}
 
 sender_init(Alias, Tab, RemoteStorage, Pid) ->
     %% Need to send a message to the receiver. It will be handled in 
@@ -151,14 +167,15 @@ fetch_more_files({[F|Fs], Dir, MP, C}) ->
 
 
 receiver_first_message(_Pid, {first, Size}, _Alias, _Tab) ->
-    {Size, []}.
+    {Size, _State = []}.
 
 
-receive_data(Data, Alias, Tab) ->
+receive_data(Data, Alias, Tab, _Sender, State) ->
     MP = data_mountpoint(Tab),
-    store_data(Data, Alias, Tab, MP).
+    ok = store_data(Data, Alias, Tab, MP),
+    {ok, State}.
 
-receive_done(_Alias, _Tab, _Sender) ->
+receive_done(_Alias, _Tab, _Sender, _State) ->
     ok.
 
 store_data([], _, _, _) ->
@@ -233,6 +250,9 @@ delete_file_or_dir(F) ->
 	ok ->
 	    ok
     end.
+
+%% End of table synch protocol
+%% ===========================================================
 
 
 validate_key(Alias, Tab, RecName, Arity, Type, Key) ->
@@ -353,8 +373,7 @@ info_mountpoint(Tab) ->
     filename:join(Dir, atom_to_list(Tab) ++ ".extfsi").
 
 data_mountpoint(Tab) ->
-    MP = get_mountpoint(Tab),
-    filename:join(MP, "data").
+    get_mountpoint(Tab).
 
 %%
 get_mountpoint(Tab) ->
@@ -1016,7 +1035,7 @@ init({Alias, Tab, MP}) ->
     St = #st{ets = Ets,
 	     dets = Dets,
 	     mp = MP,
-	     data_mp = filename:join(MP, "data"),
+	     data_mp = data_mountpoint(Tab),
 	     alias = Alias,
 	     tab = Tab},
     {ok, update_size_info(St)}.
