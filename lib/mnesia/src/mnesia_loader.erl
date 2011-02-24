@@ -257,7 +257,7 @@ init_receiver(Node, Tab,Storage,Cs,Reason) ->
 			true = lists:member(Node, Active),
 			{SenderPid, TabSize, DetsData} = 
 			    start_remote_sender(Node,Tab,Storage),
-			Init = table_init_fun(SenderPid),
+			Init = table_init_fun(SenderPid, Storage),
 			Args = [self(),Tab,Storage,Cs,SenderPid,
 				TabSize,DetsData,Init],
 			Pid = spawn_link(?MODULE, spawned_receiver, Args),
@@ -287,21 +287,21 @@ start_remote_sender(Node,Tab,Storage) ->
     mnesia_controller:start_remote_sender(Node, Tab, self(), Storage),
     put(mnesia_table_sender_node, {Tab, Node}),
     receive 
-	{SenderPid, {first, TabSize}} ->
-	    {SenderPid, TabSize, false};
-	{SenderPid, {first, TabSize, DetsData}} ->
-	    {SenderPid, TabSize, DetsData};
 	{SenderPid, Msg} when element(1, Storage) == ext ->
 	    {ext, Alias, Mod} = Storage,
 	    {Sz, Data} = Mod:receiver_first_message(SenderPid, Msg, Alias, Tab),
 	    {SenderPid, Sz, Data};
+	{SenderPid, {first, TabSize}} ->
+	    {SenderPid, TabSize, false};
+	{SenderPid, {first, TabSize, DetsData}} ->
+	    {SenderPid, TabSize, DetsData};
 	%% Protocol conversion hack
 	{copier_done, Node} ->
 	    verbose("Sender of table ~p crashed on node ~p ~n", [Tab, Node]),
 	    down(Tab, Storage)
     end.
 
-table_init_fun(SenderPid) ->
+table_init_fun(SenderPid, Storage) ->
     PConv = mnesia_monitor:needs_protocol_conversion(node(SenderPid)),
     MeMyselfAndI = self(),
     fun(read) ->
@@ -313,12 +313,12 @@ table_init_fun(SenderPid) ->
 		    PConv == false -> self()
 		end,
 	    SenderPid ! {Receiver, more},
-	    get_data(SenderPid, Receiver)
+	    get_data(SenderPid, Receiver, Storage)
     end.
 
 %% Add_table_copy get's it's own locks.
 start_receiver(Tab,Storage,Cs,SenderPid,TabSize,DetsData,{dumper,add_table_copy}) ->    
-    Init = table_init_fun(SenderPid),
+    Init = table_init_fun(SenderPid, Storage),
     case do_init_table(Tab,Storage,Cs,SenderPid,TabSize,DetsData,self(), Init) of
 	Err = {error, _} ->
 	    SenderPid ! {copier_done, node()},
@@ -448,21 +448,25 @@ tab_receiver(Node, Tab, Storage, Cs, PConv, OrigTabRec) ->
 	    tab_receiver(Node, Tab, Storage, Cs, PConv,OrigTabRec)
     end.
 
-make_table_fun(Pid, TabRec) ->
+make_table_fun(Pid, TabRec, Storage) ->
     fun(close) ->
 	    ok;
+       ({read, Msg}) ->
+	    Pid ! {TabRec, Msg},
+	    get_data(Pid, TabRec, Storage);
        (read) ->
-	    get_data(Pid, TabRec)	   
+	    get_data(Pid, TabRec, Storage)	   
     end.
 
-get_data(Pid, TabRec) ->
+get_data(Pid, TabRec, Storage) ->
     receive 
 	{Pid, {more_z, CompressedRecs}} when is_binary(CompressedRecs) ->
-	    Pid ! {TabRec, more},
-	    {zlib_uncompress(CompressedRecs), make_table_fun(Pid,TabRec)};
+	    maybe_reply(Pid, {TabRec, more}, Storage),
+	    {zlib_uncompress(CompressedRecs),
+	     make_table_fun(Pid, TabRec, Storage)};
 	{Pid, {more, Recs}} ->
-	    Pid ! {TabRec, more},
-	    {Recs, make_table_fun(Pid,TabRec)};
+	    maybe_reply(Pid, {TabRec, more}, Storage),
+	    {Recs, make_table_fun(Pid, TabRec, Storage)};
 	{Pid, no_more} ->
 	    end_of_input;
 	{copier_done, Node} ->
@@ -470,18 +474,33 @@ get_data(Pid, TabRec) ->
 		Node -> 
 		    {copier_done, Node};
 		_ ->
-		    get_data(Pid, TabRec)
+		    get_data(Pid, TabRec, Storage)
 	    end;
 	{'EXIT', Pid, Reason} ->
 	    handle_exit(Pid, Reason),
-	    get_data(Pid, TabRec)
+	    get_data(Pid, TabRec, Storage)
     end.
 
+maybe_reply(_, _, {ext, _, _}) ->
+    ignore;
+maybe_reply(Pid, Msg, _) ->
+    Pid ! Msg.
+
 ext_init_table(Alias, Mod, Tab, Fun, State, Sender) ->
-    case Fun(read) of
+    ok = Mod:load_table(Alias, Tab, {net_load, node(Sender)}),
+    ext_init_table(read, Alias, Mod, Tab, Fun, State, Sender).
+
+ext_init_table(Action, Alias, Mod, Tab, Fun, State, Sender) ->
+    case Fun(Action) of
 	{Data, NewFun} ->
-	    {ok,NewState} = Mod:receive_data(Data, Alias, Tab, Sender, State),
-	    ext_init_table(Alias, Mod, Tab, NewFun, NewState, Sender);
+	    case Mod:receive_data(Data, Alias, Tab, Sender, State) of
+		{more, NewState} ->
+		    ext_init_table({read, more}, Alias, Mod, 
+				   Tab, NewFun, NewState, Sender);
+		{{more,Msg}, NewState} ->
+		    ext_init_table({read, Msg}, Alias, Mod,
+				   Tab, NewFun, NewState, Sender)
+	    end;
 	end_of_input ->
 	    Mod:receive_done(Alias, Tab, Sender, State),
 	    ok = Fun(close)
@@ -745,7 +764,7 @@ do_send_table(Pid, Tab, Storage, RemoteS) ->
     
     SendIt = fun() ->
 		     prepare_copy(Pid, Tab, Storage),
-		     send_more(Pid, 1, Chunk, Init(), Tab, Pconvert),
+		     send_more(Pid, 1, Chunk, Init(), Tab, Storage, Pconvert),
 		     finish_copy(Pid, Tab, Storage, RemoteS)
 	     end,
     
@@ -803,20 +822,32 @@ update_where_to_write([H|T], Tab, AddNode) ->
 	     [{update_where_to_write, [add, Tab, AddNode], self()}]),
     update_where_to_write(T, Tab, AddNode).
 
-send_more(Pid, N, Chunk, DataState, Tab, OldNode) ->
+send_more(Pid, N, Chunk, DataState, Tab, Storage, OldNode) ->
     receive
 	{NewPid, more} ->
 	    case send_packet(N - 1, NewPid, Chunk, DataState, OldNode) of 
 		New when is_integer(New) -> 
 		    New - 1;
 		NewData ->
-		    send_more(NewPid, ?MAX_NOPACKETS, Chunk, NewData, Tab, OldNode)
+		    send_more(NewPid, ?MAX_NOPACKETS, Chunk, NewData,
+			      Tab, Storage, OldNode)
+	    end;
+	{NewPid, {more, Msg}} when element(1, Storage) == ext ->
+	    {ext, Alias, Mod} = Storage,
+	    {NewChunk, NewState} =
+		Mod:sender_handle_info(Msg, Alias, Tab, NewPid, DataState),
+	    case send_packet(N - 1, NewPid, NewChunk, NewState, OldNode) of
+		New when is_integer(New) ->
+		    New -1;
+		NewData ->
+		    send_more(NewPid, N, NewChunk, NewData, Tab,
+			      Storage, OldNode)
 	    end;
 	{_NewPid, {old_protocol, Tab}} ->
 	    Storage =  val({Tab, storage_type}),
 	    {Init, NewChunk} = 
 		reader_funcs(false, Tab, Storage, calc_nokeys(Storage, Tab)),
-	    send_more(Pid, 1, NewChunk, Init(), Tab, OldNode);
+	    send_more(Pid, 1, NewChunk, Init(), Tab, Storage, OldNode);
 
 	{copier_done, Node} when Node == node(Pid)->
 	    verbose("Receiver of table ~p crashed on ~p (more)~n", [Tab, Node]),

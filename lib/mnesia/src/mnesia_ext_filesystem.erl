@@ -34,6 +34,7 @@
 	 info/3]).
 
 -export([sender_init/4,
+	 sender_handle_info/5,
 	 receiver_first_message/4,
 	 receive_data/5,
 	 receive_done/4
@@ -114,11 +115,26 @@ register() ->
 %%        {InitFun :: fun() -> {Recs, Cont} | '$end_of_table',
 %%         ChunkFun :: fun(Cont) -> {Recs, Cont1} | '$end_of_table'}
 %%  2. InitFun() is called
-%%  3. ChunkFun(Cont) is called repeatedly until done
+%%  3a. ChunkFun(Cont) is called repeatedly until done
+%%  3b. sender_handle_info(Msg, Alias, Tab, ReceiverPid, Cont) ->
+%%        {ChunkFun, NewCont}
 %%
 %% Receiver side:
 %% 1. receiver_first_message(SenderPid, Msg, Alias, Tab) ->
-%%         {Size::integer(), State}
+%%        {Size::integer(), State}
+%% 2. receive_data(Data, Alias, Tab, _Sender, State) ->
+%%        {more, NewState} | {{more, Msg}, NewState}
+%% 3. receive_done(_Alias, _Tab, _Sender, _State) ->
+%%        ok
+%%
+%% The receiver can communicate with the Sender by returning
+%% {{more, Msg}, St} from receive_data/4. The sender will be called through
+%% sender_handle_info(Msg, ...), where it can adjust its ChunkFun and 
+%% Continuation. Note that the message from the receiver is sent once the
+%% receive_data/4 function returns. This is slightly different from the
+%% normal mnesia table synch, where the receiver acks immediately upon
+%% reception of a new chunk, then processes the data.
+%%
 
 sender_init(Alias, Tab, RemoteStorage, Pid) ->
     %% Need to send a message to the receiver. It will be handled in 
@@ -129,12 +145,19 @@ sender_init(Alias, Tab, RemoteStorage, Pid) ->
     {fun() ->
 	     {ok, Fs} = file:list_dir(MP),
 	     FI = fetch_files(Fs, MP),
-	     {[{[], FI}], {[F || {F,dir} <- FI], MP, MP,
+	     {[{[], FI}], {[F || {F,dir} <- FI], MP, MP, 
 			   fun() -> '$end_of_table' end}}
      end,
-     fun(Cont) ->
-	     fetch_more_files(Cont)
-     end}.
+     chunk_fun()}.
+
+sender_handle_info(_Msg, _Alias, _Tab, _ReceiverPid, Cont) ->
+    %% ignore - we don't expect any message from the receiver
+    {chunk_fun(), Cont}.
+
+chunk_fun() ->
+    fun(Cont) ->
+	    fetch_more_files(Cont)
+    end.
 
 fetch_files([F|Fs], Dir) ->
     Fn = filename:join(Dir, F),
@@ -164,91 +187,106 @@ fetch_more_files({[F|Fs], Dir, MP, C}) ->
 			   fun() -> fetch_more_files({Fs, Dir, MP, C}) end}}
     end.
 				    
-
-
 receiver_first_message(_Pid, {first, Size}, _Alias, _Tab) ->
     {Size, _State = []}.
 
 
 receive_data(Data, Alias, Tab, _Sender, State) ->
     MP = data_mountpoint(Tab),
-    ok = store_data(Data, Alias, Tab, MP),
-    {ok, State}.
+    N = store_data(Data, Alias, Tab, MP, 0),
+    call(Alias, Tab, {incr_size, N}),
+    {more, State}.
 
 receive_done(_Alias, _Tab, _Sender, _State) ->
     ok.
 
-store_data([], _, _, _) ->
-    ok;
-store_data([{Dir, Fs}|T], Alias, Tab, MP) ->
+store_data([], _, _, _, N) ->
+    N;
+store_data([{Dir, Fs}|T], Alias, Tab, MP, N) ->
     Dirname = filename:join(MP, Dir),
-    case file:list_dir(Dirname) of
-	{error, enoent} ->
-	    fill_empty(Dirname, Fs);
-	{error, enotdir} ->
-	    delete_file_or_dir(Dirname),
-	    store_data([{Dir, Fs}|T], Alias, Tab, MP);
-	{ok, MyFs} ->
-	    diff_dirs(MyFs, Fs, Dirname)
-    end,
-    store_data(T, Alias, Tab, MP).
+    N1 = case list_dir(Dirname) of
+	     {error, enoent} ->
+		 fill_empty(Dirname, Fs, N);
+	     {error, enotdir} ->
+		 N11 = delete_file_or_dir(Dirname, N),
+		 store_data([{Dir, Fs}|T], Alias, Tab, MP, N11);
+	     {ok, MyFs} ->
+		 diff_dirs(MyFs, Fs, Dirname, N)
+	 end,
+    store_data(T, Alias, Tab, MP, N1).
 
-fill_empty(Dirname, Fs) ->
-    file:make_dir(Dirname),
-    lists:map(fun({F, dir}) ->
-		      file:make_dir(filename:join(Dirname, F));
-		 ({F, Bin}) when is_binary(Bin) ->
-		      file:write_file(filename:join(Dirname, F), Bin)
-	      end, Fs).
+list_dir(Dirname) ->
+    file:list_dir(Dirname).
 
-diff_dirs(MyFs, Fs, Dirname) ->
-    lists:foreach(
-      fun(F) ->
-	      case lists:keymember(F, 1, Fs) of
-		  false ->
-		      delete_file_or_dir(filename:join(Dirname,F));
-		  true ->
-		      ok
-	      end
-      end, MyFs),
-    lists:foreach(
-      fun({F,dir}) ->
+make_dir(D)     -> file:make_dir(D).
+del_dir(D)      -> file:del_dir(D).
+delete_file(F)  -> file:delete(F).
+write_file(F,B) -> file:write_file(F, B).
+     
+fill_empty(Dirname, Fs, N) ->
+    make_dir(Dirname),
+    lists:foldl(fun({F, dir}, Acc) ->
+			file:make_dir(filename:join(Dirname, F)),
+			Acc;
+		   ({F, Bin}, Acc) when is_binary(Bin) ->
+			file:write_file(filename:join(Dirname, F), Bin),
+			Acc + 1
+		end, N, Fs).
+
+diff_dirs(MyFs, Fs, Dirname, N) ->
+    N1 = lists:foldl(
+	   fun(F, Acc) ->
+		   case lists:keymember(F, 1, Fs) of
+		       false ->
+			   delete_file_or_dir(filename:join(Dirname,F), Acc);
+		       true ->
+			   Acc
+		   end
+	   end, N, MyFs),
+    lists:foldl(
+      fun({F,dir}, Acc) ->
 	      Fname = filename:join(Dirname, F),
-	      case file:make_dir(Fname) of
+	      case make_dir(Fname) of
 		  {error, eexist} ->
 		      case filelib:is_regular(Fname) of
 			  true ->
-			      file:delete(Fname),
-			      file:make_dir(Fname);
+			      delete_file(Fname),
+			      make_dir(Fname),
+			      Acc - 1;
 			  false ->
-			      ok
+			      Acc
 		      end;
 		  ok ->
-		      ok
+		      Acc
 	      end;
-	 ({F,Bin}) when is_binary(Bin) ->
+	 ({F,Bin}, Acc) when is_binary(Bin) ->
 	      Fname = filename:join(Dirname, F),
-	      case file:write_file(Fname, Bin) of
+	      case write_file(Fname, Bin) of
 		  {error, eisdir} ->
-		      delete_file_or_dir(Fname),
-		      file:write_file(Fname, Bin);
+		      N = delete_file_or_dir(Fname),
+		      write_file(Fname, Bin),
+		      Acc+1-N;
 		  ok ->
-		      ok
+		      Acc+1
 	      end
-      end, Fs).
+      end, N1, Fs).
 
 
 delete_file_or_dir(F) ->
-    case file:delete(F) of
+    delete_file_or_dir(F, 0).
+
+delete_file_or_dir(F, N) ->
+    case delete_file(F) of
 	{error, eisdir} ->
-	    {ok, Fs} = file:list_dir(F),
-	    lists:foreach(fun(F1) ->
-				  Fn = filename:join(F, F1),
-				  delete_file_or_dir(Fn)
-			  end, Fs),
-	    ok = file:del_dir(F);
+	    {ok, Fs} = list_dir(F),
+	    N1 = lists:foldl(fun(F1, Acc) ->
+				     Fn = filename:join(F, F1),
+				     delete_file_or_dir(Fn, Acc)
+			     end, N, Fs),
+	    ok = del_dir(F),
+	    N1;
 	ok ->
-	    ok
+	    N+1
     end.
 
 %% End of table synch protocol
@@ -439,14 +477,15 @@ dir_exists_or_creatable(Dir) ->
     end.
 	    
 create_mountpoint(Tab) ->
-    file:make_dir(get_mountpoint(Tab)),
+    MP = get_mountpoint(Tab),
+    file:make_dir(MP),
     file:make_dir(data_mountpoint(Tab)),
-    file:make_dir(info_mountpoint(Tab)).
+    file:make_dir(info_mountpoint(Tab)),
+    MP.
 
 
 load_table(Alias, Tab, _LoadReason) ->
     MP = get_mountpoint(Tab),
-    create_mountpoint(Tab),
     {ok, _Pid} = 
 	mnesia_ext_sup:start_proc(
 	  Tab, ?MODULE, start_proc, [Alias, Tab, MP]),
@@ -1050,6 +1089,7 @@ open_dets(_Alias, Tab, _MP) ->
 	    {type, set}],
     mnesia_monitor:open_dets(Name, Args).
 
+
 handle_call({info, Item}, _From, #st{ets = Ets} = St) ->
     Result = case ets:lookup(Ets, {info, Item}) of
 		 [{_, Value}] ->
@@ -1058,6 +1098,9 @@ handle_call({info, Item}, _From, #st{ets = Ets} = St) ->
 		     default_info(Item)
 	     end,
     {reply, Result, St};
+handle_call({incr_size, Incr}, _From, St) ->
+    incr_size(St, Incr),
+    {reply, ok, St};
 handle_call({insert, Obj}, _From, #st{data_mp = MP,
 				      alias = Alias, tab = Tab} = St) ->
     case do_insert(Alias, Tab, Obj, MP) of
@@ -1095,11 +1138,14 @@ default_info(_) -> undefined.
 update_size_info(#st{alias = Alias, tab = Tab, data_mp = MP} = St) ->    
     PrevInfo = info(Alias, Tab, size),
     io:fwrite("Updating size info of Tab = ~p (~p)...~n", [Tab, PrevInfo]),
-    Pat = [{'_',[],[1]}],
-    Sz = sum_size(do_select(Alias, Tab, MP, Pat, 100), 0),
+    Sz = filelib:fold_files(MP, ".*", true, fun(_,Acc) -> Acc+1 end, 0),
+    %% Pat = [{'_',[],[1]}],
+    %% Sz = sum_size(do_select(Alias, Tab, MP, Pat, 100), 0),
     io:fwrite("Size of ~p is ~p~n", [Tab, Sz]),
     write_info(size, Sz, St),
     St.
+
+
 
 sum_size({L, Cont}, Acc) ->
     sum_size(select(Cont), lists:sum(L) + Acc);
