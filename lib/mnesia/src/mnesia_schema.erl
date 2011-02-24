@@ -209,13 +209,23 @@ do_set_schema(Tab, Cs) ->
             mnesia_lib:add({schema, local_tables}, Tab);
         false ->
             ignore
-    end.
+    end,
+    set_ext_types(Tab, get_ext_types(), Cs#cstruct.external_copies).
 
 set_record_validation(Tab, {ext,Alias,Mod}, RecName, Arity, Type) ->
     set({Tab, record_validation}, {RecName, Arity, Type, Alias, Mod});
 set_record_validation(Tab, _, RecName, Arity, Type) ->
     set({Tab, record_validation}, {RecName, Arity, Type}).
 
+set_ext_types(Tab, ExtTypes, ExtCopies) ->
+    lists:foreach(
+      fun({Type, _} = Key) ->
+	      Nodes = case lists:keyfind(Key, 1, ExtCopies) of
+			  {_, Ns} -> Ns;
+			  false   -> []
+		      end,
+	      set({Tab, Type}, Nodes)
+      end, ExtTypes).
     
 
 wild(RecName, Arity) ->
