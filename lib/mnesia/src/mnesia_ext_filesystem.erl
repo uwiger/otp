@@ -1106,7 +1106,7 @@ remove_top([], T) ->
 	    
 read_obj(true, _, Tab, _, _, RelName) ->
     [setelement(2, mnesia:table_info(Tab, wild_pattern), RelName)];
-read_obj(false, Alias, Tab, RecName, Filename, RelName) ->
+read_obj(false, Alias, _Tab, RecName, Filename, RelName) ->
     case file:read_file(Filename) of
 	{ok, Binary} ->
 	    case Alias of
@@ -1213,14 +1213,29 @@ default_info(_) -> undefined.
 update_size_info(#st{alias = Alias, tab = Tab, data_mp = MP} = St) ->    
     PrevInfo = info(Alias, Tab, size),
     io:fwrite("Updating size info of Tab = ~p (~p)...~n", [Tab, PrevInfo]),
-    Sz = filelib:fold_files(MP, ".*", true, fun(_,Acc) -> Acc+1 end, 0),
+    Sz = count_files(MP),
     %% Pat = [{'_',[],[1]}],
     %% Sz = sum_size(do_select(Alias, Tab, MP, Pat, 100), 0),
     io:fwrite("Size of ~p is ~p~n", [Tab, Sz]),
     write_info(size, Sz, St),
     St.
 
+count_files(Dir) ->
+    case os:type() of
+	{unix,_} ->
+	    try begin
+		    Ret = os:cmd("find " ++ Dir ++ " -type f | wc -l"),
+		    [SzStr] = string:tokens(Ret, " \n"),
+		    list_to_integer(SzStr)
+		end
+	    catch
+		error:_ ->
+		    safe_count_files(Dir)
+	    end
+    end.
 
+safe_count_files(Dir) ->
+    filelib:fold_files(Dir, ".*", true, fun(_,Acc) -> Acc+1 end, 0).
 
 sum_size({L, Cont}, Acc) ->
     sum_size(select(Cont), lists:sum(L) + Acc);
