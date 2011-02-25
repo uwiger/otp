@@ -106,6 +106,7 @@ register() ->
     mnesia_schema:schema_transaction(
       fun() ->
 	      mnesia_schema:do_add_backend_type(fs_copies, ?MODULE),
+	      mnesia_schema:do_add_backend_type(fstab_copies, ?MODULE),
 	      mnesia_schema:do_add_backend_type(raw_fs_copies, ?MODULE)
       end).
 
@@ -330,6 +331,8 @@ validate_record(Alias, Tab, RecName, Arity, Type, Obj) ->
 do_validate_key(fs_copies, Tab, Key) ->
 %%    split_key(sext_encode(Key));
     do_validate_key(raw_fs_copies, Tab, Key);
+do_validate_key(fstab_copies, _Tab, Key) ->
+    split_key(sext_encode(Key));
 do_validate_key(raw_fs_copies, Tab, Key) ->
     if is_binary(Key) ->
 	    Key;
@@ -341,23 +344,23 @@ do_validate_key(raw_fs_copies, Tab, Key) ->
 	    mnesia:abort({bad_type, [Tab, Key]})
     end.
 
-%% decode_key(Key) ->
-%%     sext_decode(unsplit_key(Key)).
+decode_key(Key) ->
+    sext_decode(unsplit_key(Key)).
 
-%% sext_encode(K) ->
-%%     mnesia_sext:encode_sb32(K).
+sext_encode(K) ->
+    mnesia_sext:encode_sb32(K).
 
-%% sext_decode(K) ->
-%%     mnesia_sext:decode_sb32(K).
+sext_decode(K) ->
+    mnesia_sext:decode_sb32(K).
 
-%% split_key(<<A,B,C,T/binary>>) ->
-%%     <<A,B,C,$/, (split_key(T))/binary>>;
-%% split_key(Bin) ->
-%%     Bin.
+split_key(<<A,B,C,T/binary>>) ->
+    <<A,B,C,$/, (split_key(T))/binary>>;
+split_key(Bin) ->
+    Bin.
 
-%% unsplit_key(Bin) ->
-%%     << <<C>> || <<C>> <= Bin,
-%% 		C =/= $/ >>.
+unsplit_key(Bin) ->
+    << <<C>> || <<C>> <= Bin,
+ 		C =/= $/ >>.
 
 
 create_table(_Alias, Tab, _Props) ->
@@ -378,7 +381,7 @@ prop(K,Props) ->
     proplists:get_value(K, Props).
 
 check_definition(Alias, Tab, Nodes, Props)
-  when Alias==fs_copies; Alias==raw_fs_copies->
+  when Alias==fs_copies; Alias==raw_fs_copies; Alias==fstab_copies ->
     Id = {Alias, Nodes},
     [Rc, Dc, DOc] =
         [proplists:get_value(K,Props,[]) || K <- [ram_copies,
@@ -401,7 +404,7 @@ check_definition(Alias, Tab, Nodes, Props)
 	    case {Alias, prop(attributes, Props)} of
 		{raw_fs_copies, [_Key, _Value]} ->
 		    ok;
-		{fs_copies,  _} ->
+		{_,  _} when Alias==fs_copies; Alias==fstab_copies ->
 		    ok;
 		Attrs ->
 		    mnesia:abort({invalid_attributes, Tab, Attrs})
@@ -579,10 +582,10 @@ info(_Alias, Tab, Item) ->
 %%     end.
 
 lookup(Alias, Tab, Key0) ->
-    Key = do_validate_key(fs_copies, Tab, Key0),
+    Key = do_validate_key(Alias, Tab, Key0),
     lookup(Alias, Tab, Key0, fullname(Tab, Key)).
 
-lookup(fs_copies, _Tab, Key, Fullname) ->
+lookup(Alias, _Tab, Key, Fullname) when Alias==fs_copies; Alias==fstab_copies ->
     case file:read_file(Fullname) of
 	{ok, Bin} ->
 	    [setelement(2, binary_to_term(Bin), Key)];
@@ -618,7 +621,7 @@ do_insert(Alias, Tab, Obj, MP) ->
     ok = write_object(Alias, Fullname, Obj),
     Added.
 
-write_object(fs_copies, Fullname, Obj) ->
+write_object(Alias, Fullname, Obj) when Alias==fs_copies; Alias==fstab_copies ->
     file:write_file(Fullname, term_to_binary(Obj, [compressed]));
 write_object(raw_fs_copies, Fullname, {_, _K, V}) ->
     file:write_file(Fullname, iolist_to_binary([V])).
@@ -1213,14 +1216,36 @@ default_info(_) -> undefined.
 update_size_info(#st{alias = Alias, tab = Tab, data_mp = MP} = St) ->    
     PrevInfo = info(Alias, Tab, size),
     io:fwrite("Updating size info of Tab = ~p (~p)...~n", [Tab, PrevInfo]),
-    Sz = count_files(MP),
-    %% Pat = [{'_',[],[1]}],
-    %% Sz = sum_size(do_select(Alias, Tab, MP, Pat, 100), 0),
-    io:fwrite("Size of ~p is ~p~n", [Tab, Sz]),
-    write_info(size, Sz, St),
+    case should_update_size(Tab) of
+	true ->
+	    Sz = count_files(Alias, Tab, MP),
+	    io:fwrite("Size of ~p is ~p~n", [Tab, Sz]),
+	    write_info(size, Sz, St);
+	{true, {M,F}} ->
+	    case apply(M, F, [Alias, Tab, MP]) of
+		Sz1 when is_integer(Sz1), Sz1 >= 0 ->
+		    io:fwrite("~p:~p(~p,~p,~p) -> ~p~n",
+			      [M,F,Alias,Tab,MP, Sz1]),
+		    write_info(size, Sz1, St)
+	    end;
+	false ->
+	    io:fwrite("...not updating; keeping old size~n", []),
+	    ignore
+    end,
     St.
 
-count_files(Dir) ->
+should_update_size(Tab) ->
+    try mnesia:read_table_property(Tab, update_size_on_load) of
+	{_, B} when is_boolean(B) ->
+	    B;
+	{_, {true, {M,F}}} ->
+	    {true, {M,F}}
+    catch
+	error:_ -> true;
+	exit:_  -> true
+    end.
+
+count_files(Alias, Tab, Dir) ->
     case os:type() of
 	{unix,_} ->
 	    try begin
@@ -1230,11 +1255,11 @@ count_files(Dir) ->
 		end
 	    catch
 		error:_ ->
-		    safe_count_files(Dir)
+		    safe_count_files(Alias, Tab, Dir)
 	    end
     end.
 
-safe_count_files(Dir) ->
+safe_count_files(_Alias, _Tab, Dir) ->
     filelib:fold_files(Dir, ".*", true, fun(_,Acc) -> Acc+1 end, 0).
 
 sum_size({L, Cont}, Acc) ->
