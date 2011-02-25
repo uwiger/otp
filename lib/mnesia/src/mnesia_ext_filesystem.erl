@@ -25,6 +25,8 @@
 -module(mnesia_ext_filesystem).
 -behaviour(mnesia_backend_type).
 
+-compile(export_all).
+
 -export([register/0]).
 %%
 -export([check_definition/4,
@@ -89,6 +91,7 @@
 	      keypat,
 	      ms,
 	      limit,
+	      key_only = false,
 	      direction = forward}).
 
 -record(st, {ets,
@@ -141,6 +144,12 @@ sender_init(Alias, Tab, RemoteStorage, Pid) ->
     %% receiver_first_message/4 below. There could be a volley of messages...
     {ext, Alias, ?MODULE} = RemoteStorage, % limitation for now
     Pid ! {self(), {first, info(Alias, Tab, size)}},
+    receive
+	{Pid, Reply} ->
+	    io:fwrite("Receiver (~p) replies: ~p~n", [Pid, Reply])
+    after 30000 ->
+	    erlang:error(timeout_waiting_for_receiver)
+    end,
     MP = data_mountpoint(Tab),
     {fun() ->
 	     {ok, Fs} = file:list_dir(MP),
@@ -187,7 +196,9 @@ fetch_more_files({[F|Fs], Dir, MP, C}) ->
 			   fun() -> fetch_more_files({Fs, Dir, MP, C}) end}}
     end.
 				    
-receiver_first_message(_Pid, {first, Size}, _Alias, _Tab) ->
+receiver_first_message(Pid, {first, Size} = _Msg, _Alias, _Tab) ->
+    io:fwrite("~p:receiver_first_message (~p): ~p~n", [?MODULE, Pid, _Msg]),
+    Pid ! {self(), "Hello Joe..."},
     {Size, _State = []}.
 
 
@@ -929,8 +940,69 @@ do_select(Alias, Tab, Dir, MS, Limit) ->
 	       keypat = keypat(MP, MS),
 	       recname = RecName,
 	       ms = MS,
+	       key_only = needs_key_only(MS),
 	       limit = Limit},
     do_fold_dir(Dir, Sel, [], Limit).
+
+needs_key_only([{HP,_,Body}]) ->
+    BodyVars = lists:flatmap(fun extract_vars/1, Body),
+    wild_in_body(BodyVars) orelse
+	case bound_in_headpat(HP) of
+	    {all,V} -> not(lists:member(V, BodyVars));
+	    none    -> true;
+	    Vars    -> not(any_in_body(lists:keydelete(2,1,Vars), BodyVars))
+	end;
+needs_key_only(_) ->
+    %% don't know
+    false.
+
+
+bound_in_headpat(HP) when is_atom(HP) ->
+    {all, HP};
+bound_in_headpat(HP) when is_tuple(HP) ->
+    [_|T] = tuple_to_list(HP),
+    map_vars(T, 2);
+bound_in_headpat(_) ->
+    %% this is not the place to throw an exception
+    none.
+
+map_vars([H|T], P) ->
+    case extract_vars(H) of
+	[] ->
+	    map_vars(T, P+1);
+	Vs ->
+	    [{P, Vs}|map_vars(T, P+1)]
+    end;
+map_vars([], _) ->
+    [].
+
+any_in_body(Vars, BodyVars) ->
+    lists:any(fun({_,Vs}) ->
+		      intersection(Vs, BodyVars) =/= []
+	      end, Vars).
+
+intersection(A,B) when is_list(A), is_list(B) ->
+    A -- (A -- B).
+
+wild_in_body(BodyVars) ->
+    intersection(BodyVars, ['$$','$_']) =/= [].
+
+
+extract_vars([H|T]) ->
+    extract_vars(H) ++ extract_vars(T);
+extract_vars(T) when is_tuple(T) ->
+    extract_vars(tuple_to_list(T));
+extract_vars(T) when T=='$$'; T=='$_' ->
+    [T];
+extract_vars(T) when is_atom(T) ->
+    case mnesia_sext:is_wild(T) of
+	true ->
+	    [T];
+	false ->
+	    []
+    end;
+extract_vars(_) ->
+    [].
 
 remove_ending_slash(D) ->
     case lists:reverse(D) of
@@ -988,14 +1060,14 @@ list_dir(Dir, Type) ->
 	    Other
     end.
 
-match_file(Filename, #sel{ms = F, mp = MP, alias = Alias,
-			 recname = RecName}) when is_function(F) ->
+match_file(Filename, #sel{ms = F, mp = MP, alias = Alias, tab = Tab,
+			  recname = RecName}) when is_function(F) ->
     case F(key, Filename) of
 	[] ->
 	    nomatch;
 	[_] ->
 	    RelFilename = remove_top(MP, Filename),
-	    Read = read_obj(Alias, RecName, Filename, RelFilename),
+	    Read = read_obj(false, Alias, Tab, RecName, Filename, RelFilename),
 	    case F(data, Read) of
 		[] ->
 		    nomatch;
@@ -1004,13 +1076,14 @@ match_file(Filename, #sel{ms = F, mp = MP, alias = Alias,
 	    end
     end;
 match_file(Filename, #sel{mp = MP, keypat = KeyPat, ms = MS,
-			  alias = Alias, recname = RecName}) ->
+			  key_only = KeyOnly,
+			  alias = Alias, tab = Tab, recname = RecName}) ->
     case match_spec_run([Filename], [{KeyPat,[],[true]}]) of
 	[] ->
 	    nomatch;
 	[_] ->
 	    RelFilename = remove_top(MP, Filename),
-	    Read = read_obj(Alias, RecName, Filename, RelFilename),
+	    Read = read_obj(KeyOnly, Alias, Tab, RecName, Filename, RelFilename),
 	    case match_spec_run(Read, MS) of
 		[] ->
 		    nomatch;
@@ -1031,7 +1104,9 @@ remove_top([], T) ->
     T.
 
 	    
-read_obj(Alias, RecName, Filename, RelName) ->
+read_obj(true, _, Tab, _, _, RelName) ->
+    [setelement(2, mnesia:table_info(Tab, wild_pattern), RelName)];
+read_obj(false, Alias, Tab, RecName, Filename, RelName) ->
     case file:read_file(Filename) of
 	{ok, Binary} ->
 	    case Alias of

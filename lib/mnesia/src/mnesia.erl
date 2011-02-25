@@ -2163,6 +2163,7 @@ system_info2(access_module) -> mnesia_monitor:get_env(access_module);
 system_info2(auto_repair) -> mnesia_monitor:get_env(auto_repair);
 system_info2(is_running) -> mnesia_lib:is_running();
 system_info2(backup_module) -> mnesia_monitor:get_env(backup_module);
+system_info2(backend_types) -> mnesia_schema:backend_types();
 system_info2(event_module) -> mnesia_monitor:get_env(event_module);
 system_info2(debug) -> mnesia_monitor:get_env(debug);
 system_info2(dump_log_load_regulation) -> mnesia_monitor:get_env(dump_log_load_regulation);
@@ -2201,6 +2202,7 @@ system_info_items(yes) ->
      access_module,
      auto_repair,
      backup_module,
+     backend_types,
      checkpoints,
      db_nodes,
      debug,

@@ -30,6 +30,7 @@
 -export([
          add_backend_type/2,
 	 do_add_backend_type/2,
+	 backend_types/0,
          add_snmp/2,
          add_table_copy/3,
          add_table_index/2,
@@ -1090,6 +1091,11 @@ do_add_backend_type(Name, Module) ->
         _Other ->
             mnesia:abort({bad_type, {backend_type,Name,Module}})
     end.
+
+%% Used e.g. by mnesia:system_info(backend_types).
+backend_types() ->
+    [ram_copies, disc_copies, disc_only_copies | 
+     [T || {T,_} <- get_ext_types()]].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Here's the real interface function to create a table

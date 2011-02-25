@@ -288,12 +288,15 @@ start_remote_sender(Node,Tab,Storage) ->
     put(mnesia_table_sender_node, {Tab, Node}),
     receive 
 	{SenderPid, Msg} when element(1, Storage) == ext ->
+	    io:fwrite("remote_sender sent (ext): ~p~n", [{SenderPid,Msg}]),
 	    {ext, Alias, Mod} = Storage,
 	    {Sz, Data} = Mod:receiver_first_message(SenderPid, Msg, Alias, Tab),
 	    {SenderPid, Sz, Data};
-	{SenderPid, {first, TabSize}} ->
+	{SenderPid, {first, TabSize}} =_M1 ->
+	    io:fwrite("remote_sender sent (1): ~p~n", [_M1]),
 	    {SenderPid, TabSize, false};
-	{SenderPid, {first, TabSize, DetsData}} ->
+	{SenderPid, {first, TabSize, DetsData}} = _M2 ->
+	    io:fwrite("remote_sender sent (2): ~p~n", [_M2]),
 	    {SenderPid, TabSize, DetsData};
 	%% Protocol conversion hack
 	{copier_done, Node} ->

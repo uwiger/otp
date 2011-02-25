@@ -25,6 +25,8 @@
 -export([prefix_sb32/1]).
 -export([to_sb32/1, from_sb32/1]).
 
+-export([is_wild/1]).
+
 -define(negbig   , 8).
 -define(neg4     , 9).
 -define(pos4     , 10).
