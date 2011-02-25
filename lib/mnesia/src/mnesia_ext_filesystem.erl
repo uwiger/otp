@@ -308,7 +308,7 @@ delete_file_or_dir(F, N) ->
 validate_key(Alias, Tab, RecName, Arity, Type, Key) ->
     %% RecName, Arity and Type have already been validated
     try begin
-	    _NewKey = do_validate_key(Alias, Tab, Key),
+	    _NewKey = encode_key(Alias, Tab, Key),
 	    {RecName, Arity, Type}
 	end
     catch
@@ -317,7 +317,7 @@ validate_key(Alias, Tab, RecName, Arity, Type, Key) ->
 
 validate_record(Alias, Tab, RecName, Arity, Type, Obj) ->
     %% RecName, Arity and Type have already been validated
-    _Key = do_validate_key(Alias, Tab, element(2, Obj)),
+    _Key = encode_key(Alias, Tab, element(2, Obj)),
     {RecName, Arity, Type}.
 
 %% For 'fs_copies', we should really use a key encoding scheme that 
@@ -328,24 +328,27 @@ validate_record(Alias, Tab, RecName, Arity, Type, Obj) ->
 %% be needed to eliminate illegal characters and '/' - possibly combined
 %% with a scheme to break the key into pieces separated by '/'.
 %%
-do_validate_key(fs_copies, Tab, Key) ->
+encode_key(fs_copies, Tab, Key) ->
 %%    split_key(sext_encode(Key));
-    do_validate_key(raw_fs_copies, Tab, Key);
-do_validate_key(fstab_copies, _Tab, Key) ->
+    encode_key(raw_fs_copies, Tab, Key);
+encode_key(fstab_copies, _Tab, Key) ->
     split_key(sext_encode(Key));
-do_validate_key(raw_fs_copies, Tab, Key) ->
+encode_key(raw_fs_copies, Tab, Key) ->
     if is_binary(Key) ->
-	    Key;
+	    binary_to_list(Key);
        is_list(Key) ->
-	    list_to_binary(Key);
+	    binary_to_list(list_to_binary(Key));
        is_atom(Key) ->
-	    list_to_binary(atom_to_list(Key));
+	    atom_to_list(Key);
        true ->
 	    mnesia:abort({bad_type, [Tab, Key]})
     end.
 
-decode_key(Key) ->
-    sext_decode(unsplit_key(Key)).
+decode_key(Key, fstab_copies, _) ->
+    sext_decode(unsplit_key(list_to_binary([Key])));
+decode_key(Key, _, _) ->
+    Key.
+
 
 sext_encode(K) ->
     mnesia_sext:encode_sb32(K).
@@ -353,9 +356,12 @@ sext_encode(K) ->
 sext_decode(K) ->
     mnesia_sext:decode_sb32(K).
 
-split_key(<<A,B,C,T/binary>>) ->
-    <<A,B,C,$/, (split_key(T))/binary>>;
-split_key(Bin) ->
+split_key(K) when is_binary(K) ->
+    binary_to_list(split_key1(K)).
+
+split_key1(<<A,B,C,T/binary>>) ->
+    <<A,B,C,$/, (split_key1(T))/binary>>;
+split_key1(Bin) ->
     Bin.
 
 unsplit_key(Bin) ->
@@ -582,13 +588,13 @@ info(_Alias, Tab, Item) ->
 %%     end.
 
 lookup(Alias, Tab, Key0) ->
-    Key = do_validate_key(Alias, Tab, Key0),
+    Key = encode_key(Alias, Tab, Key0),
     lookup(Alias, Tab, Key0, fullname(Tab, Key)).
 
-lookup(Alias, _Tab, Key, Fullname) when Alias==fs_copies; Alias==fstab_copies ->
+lookup(Alias, _Tab, _Key, Fullname) when Alias==fs_copies; Alias==fstab_copies ->
     case file:read_file(Fullname) of
 	{ok, Bin} ->
-	    [setelement(2, binary_to_term(Bin), Key)];
+	    [binary_to_term(Bin)];
 	{error, _} ->
 	    []
     end;
@@ -609,7 +615,7 @@ insert(Alias, Tab, Obj) ->
 %% Returns true: new object was added; false: existing object was updated
 %%
 do_insert(Alias, Tab, Obj, MP) ->
-    Key = do_validate_key(Alias, Tab, element(2, Obj)),
+    Key = encode_key(Alias, Tab, element(2, Obj)),
     Fullname = fullname(Tab, Key, MP),
     ok = filelib:ensure_dir(Fullname),
     Added = case file:read_file_info(Fullname) of
@@ -631,36 +637,17 @@ match_object(Alias, Tab, Pat) ->
 
 select(Alias, Tab, Ms) ->
     MP = data_mountpoint(Tab),
-    {Res, Cont} = do_select(Alias, Tab, MP, Ms, infinity),
-    '$end_of_table' = Cont(),
-    Res.
-
+    case do_select(Alias, Tab, MP, Ms, infinity) of
+	{Res, Cont} ->
+	    '$end_of_table' = Cont(),
+	    Res;
+	'$end_of_table' ->
+	    '$end_of_table'
+    end.
 
 select(Alias, Tab, Ms, Limit) when is_integer(Limit) ->
     MP = data_mountpoint(Tab),
     do_select(Alias, Tab, MP, Ms, Limit).
-
-%% remove_first_slash("/" ++ Str) ->
-%%     Str;
-%% remove_first_slash(Str) ->
-%%     Str.
-
-%% keypat_to_match(Str) ->
-%%     keypat_to_match(Str, [], []).
-
-%% keypat_to_match("/" ++ Str, DirAcc, Dirs) ->
-%%     keypat_to_match(Str, [], [lists:reverse(DirAcc)|Dirs]);
-%% keypat_to_match("." ++ T, DirAcc, Dirs) ->
-%%     keypat_to_match(T, ".\\" ++ DirAcc, Dirs);
-%% keypat_to_match([H|T], DirAcc, Dirs) when is_integer(H) ->
-%%     keypat_to_match(T, [H|DirAcc], Dirs);
-%% keypat_to_match([H|T], DirAcc, Dirs) when is_atom(H) ->
-%%     keypat_to_match(T, "." ++ DirAcc, Dirs);
-%% keypat_to_match('_', DirAcc, Dirs) ->
-%%     {open, lists:reverse(Dirs), lists:reverse("*." ++ DirAcc)};
-%% keypat_to_match([], DirAcc, Dirs) ->
-%%     {closed, lists:reverse(Dirs), lists:reverse(DirAcc)}.
-
 
 repair_continuation(Cont, _Ms) ->
     Cont.
@@ -688,12 +675,11 @@ get_sel_cont(C) ->
 fixtable(_Alias, _Tab, _Bool) ->
     true.
 
-
 delete(Alias, Tab, Key) ->
     call(Alias, Tab, {delete, Key}).
 
 do_delete(Alias, Tab, Key, MP) ->
-    Fullname = fullname(Tab, do_validate_key(Alias, Tab, Key), MP),
+    Fullname = fullname(Tab, encode_key(Alias, Tab, Key), MP),
     Deleted = case file:read_file_info(Fullname) of
 		  {error, enoent} ->
 		      false;
@@ -706,8 +692,7 @@ do_delete(Alias, Tab, Key, MP) ->
 match_delete(_Alias, _Tab, _Pat) ->
     erlang:error({not_allowed, [{?MODULE,match_erase,[_Tab, _Pat]}]}).
 
-
-first(_Alias, Tab) ->
+first(Alias, Tab) ->
     MP = data_mountpoint(Tab),
     Type = mnesia:table_info(Tab, type),
     case list_dir(MP, Type) of
@@ -716,13 +701,13 @@ first(_Alias, Tab) ->
 		'$end_of_table' ->
 		    '$end_of_table';
 		F ->
-		    remove_top(MP, F)
+		    decode_key(remove_top(MP, F), Alias, Tab)
 	    end;
 	_ ->
 	    '$end_of_table'
     end.
 
-last(_Alias, Tab) ->
+last(Alias, Tab) ->
     MP = data_mountpoint(Tab),
     Type = mnesia:table_info(Tab, type),
     case list_dir(MP, Type) of
@@ -731,13 +716,13 @@ last(_Alias, Tab) ->
 		'$end_of_table' ->
 		    '$end_of_table';
 		F ->
-		    remove_top(MP, F)
+		    decode_key(remove_top(MP, F), Alias, Tab)
 	    end;
 	_ ->
 	    '$end_of_table'
     end.
 
-prev(_Alias, Tab, Key) ->
+prev(Alias, Tab, Key) ->
     MP = data_mountpoint(Tab),
     Fullname = fullname(Tab, Key, MP),
     Type = mnesia:table_info(Tab, type),
@@ -745,19 +730,20 @@ prev(_Alias, Tab, Key) ->
 	'$end_of_table' ->
 	    '$end_of_table';
 	F ->
-	    remove_top(MP, F)
+	    decode_key(remove_top(MP, F), Alias, Tab)
     end.
 
 
-next(_Alias, Tab, Key) ->
+next(Alias, Tab, Key0) ->
     MP = data_mountpoint(Tab),
+    Key = encode_key(Alias, Tab, Key0),
     Fullname = fullname(Tab, Key, MP),
     Type = mnesia:table_info(Tab, type),
     case do_next(Fullname, Type) of
 	'$end_of_table' ->
 	    '$end_of_table';
 	F ->
-	    remove_top(MP, F)
+	    decode_key(remove_top(MP, F), Alias, Tab)
     end.
 
 do_prev(Fullname, Type) ->
@@ -889,19 +875,18 @@ clear_table(_Alias, _Tab) ->
 
 is_key_prefix(File, Fun) when is_function(Fun) ->
     Fun(File);
-is_key_prefix(File, Pat) ->
-    is_key_prefix1(File, Pat).
-
-is_key_prefix1([], _) ->
-    true;
-is_key_prefix1([H|T], [H|T1]) ->
-    is_key_prefix1(T, T1);
-is_key_prefix1([_|_], L) when is_list(L) ->
-    false;
-is_key_prefix1(_, '_') ->
-    true;
-is_key_prefix1(_, V) ->
-    is_dollar_var(V).
+is_key_prefix(File, {Pfx,_}) ->
+    lists:prefix(Pfx, File).
+%% is_key_prefix1([], _) ->
+%%     true;
+%% is_key_prefix1([H|T], [H|T1]) ->
+%%     is_key_prefix1(T, T1);
+%% is_key_prefix1([_|_], L) when is_list(L) ->
+%%     false;
+%% is_key_prefix1(_, '_') ->
+%%     true;
+%% is_key_prefix1(_, V) ->
+%%     is_dollar_var(V).
 
 is_dollar_var(P) when is_atom(P) ->
     case atom_to_list(P) of
@@ -919,42 +904,81 @@ is_dollar_var(P) when is_atom(P) ->
 is_dollar_var(_) ->
     false.
 
-keypat(_Dir, F) when is_function(F) ->
+keypat(_Alias, _Dir, F) when is_function(F) ->
     fun(File) -> F(keypat, File) end;
-keypat(Dir, [{HeadPat,_,_}|_]) when is_tuple(HeadPat) ->
-    case element(2, HeadPat) of
-	L when is_list(L) ->
-	    Dir ++ [$/|L];
-	_ ->
-	    '_'
-    end;
-keypat(_, _) ->
-    '_'.
+keypat(Alias, Dir, [{HeadPat,Gs,_}|_]) when is_tuple(HeadPat) ->
+    keypat1(Alias, HeadPat, Dir, Gs);
+keypat(_, _, _) ->
+    {"", universal_keypat()}.
 
+keypat1(fstab_copies, HP, Dir, Gs) ->
+    KP = element(2, HP),
+    KeyVars = extract_vars(KP),
+    Guards = relevant_guards(Gs, KeyVars),
+    Pfx = Dir ++ [$/|split_key(mnesia_sext:prefix_sb32(KP))],
+    {Pfx, [{KP, Guards, [true]}]};
+keypat1(_, HP, Dir, _) ->
+    case element(2, HP) of
+	L when is_list(L) ->
+	    {Dir ++ [$/|plain_key_prefix(L)], [{L,[],[true]}]};
+	_ ->
+	    {"", universal_keypat()}
+    end.
+
+universal_keypat() ->
+    [{'_',[],[true]}].
+
+plain_key_prefix([H|T]) when is_integer(H) ->
+    [H|plain_key_prefix(T)];
+plain_key_prefix(_) ->
+    [].
+
+
+
+relevant_guards(Gs, Vars) ->
+    case Vars -- ['_'] of
+	[] ->
+	    [];
+	Vars1 ->
+	    lists:filter(fun(G) ->
+				 Vg = extract_vars(G),
+				 intersection(Vg, Vars1) =/= []
+				     andalso (Vg -- Vars1) == []
+			 end, Gs)
+    end.
+				     
 
 do_select(Alias, Tab, Dir, MS, Limit) ->
     MP = remove_ending_slash(Dir),
     Type = mnesia:table_info(Tab, type),
     RecName = mnesia:table_info(Tab, record_name),
+    {Pfx, _} = Keypat = keypat(Alias, MP, MS),
     Sel = #sel{alias = Alias,
 	       tab = Tab,
 	       type = Type,
 	       mp = MP,
-	       keypat = keypat(MP, MS),
+	       keypat = Keypat,
 	       recname = RecName,
 	       ms = MS,
 	       key_only = needs_key_only(MS),
 	       limit = Limit},
-    do_fold_dir(Dir, Sel, [], Limit).
+    StartDir = case length(PDir = filename:dirname(Pfx)) of
+		   L when L >= length(MP) ->
+		       PDir;
+		   _ ->
+		       MP
+	       end,
+    do_fold_dir(StartDir, Sel, [], Limit).
 
 needs_key_only([{HP,_,Body}]) ->
     BodyVars = lists:flatmap(fun extract_vars/1, Body),
-    wild_in_body(BodyVars) orelse
+    %% Note that we express the conditions for "needs more than key" and negate.
+    not(wild_in_body(BodyVars) orelse
 	case bound_in_headpat(HP) of
-	    {all,V} -> not(lists:member(V, BodyVars));
-	    none    -> true;
-	    Vars    -> not(any_in_body(lists:keydelete(2,1,Vars), BodyVars))
-	end;
+	    {all,V} -> lists:member(V, BodyVars);
+	    none    -> false;
+	    Vars    -> any_in_body(lists:keydelete(2,1,Vars), BodyVars)
+	end);
 needs_key_only(_) ->
     %% don't know
     false.
@@ -1016,11 +1040,15 @@ remove_ending_slash(D) ->
     end.
 
 do_fold_dir(Dir, Sel, Acc, N) ->
-    {ok,Fs} = list_dir(Dir, Sel#sel.type),
-    do_fold(Fs, Dir, Sel, Acc, N,
-	    fun(Acc1, _) ->
-		    {lists:reverse(Acc1), fun() -> '$end_of_table' end}
-	    end).
+    case list_dir(Dir, Sel#sel.type) of
+	{ok, Fs} ->
+	    do_fold(Fs, Dir, Sel, Acc, N,
+		    fun(Acc1, _) ->
+			    {lists:reverse(Acc1), fun() -> '$end_of_table' end}
+		    end);
+	{error,_} ->
+	    '$end_of_table'
+    end.
 
 do_fold([], _, _, Acc, N, C) ->
     C(Acc, N);
@@ -1078,10 +1106,12 @@ match_file(Filename, #sel{ms = F, mp = MP, alias = Alias, tab = Tab,
 		    {match, Res}
 	    end
     end;
-match_file(Filename, #sel{mp = MP, keypat = KeyPat, ms = MS,
+match_file(Filename, #sel{mp = MP, keypat = {_,KeyPat}, ms = MS,
 			  key_only = KeyOnly,
 			  alias = Alias, tab = Tab, recname = RecName}) ->
-    case match_spec_run([Filename], [{KeyPat,[],[true]}]) of
+    RelFilename = remove_top(MP, Filename),
+    Key = decode_key(RelFilename, Alias, Tab),
+    case match_spec_run([Key], KeyPat) of
 	[] ->
 	    nomatch;
 	[_] ->
@@ -1115,7 +1145,7 @@ read_obj(false, Alias, _Tab, RecName, Filename, RelName) ->
 	    case Alias of
 		raw_fs_copies ->
 		    [{RecName, RelName, Binary}];
-		fs_copies ->
+		_ when Alias==fs_copies; Alias==fstab_copies ->
 		    [binary_to_term(Binary)]
 	    end;
 	_ ->
