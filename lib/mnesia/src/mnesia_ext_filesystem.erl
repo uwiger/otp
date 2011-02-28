@@ -543,49 +543,6 @@ info(_Alias, Tab, Item) ->
 	error:Reason ->
 	    {error, Reason}
     end.
-	
-
-%% read_file_info(Tab, Key) ->
-%%     Fname = fullname(Tab, Key),
-%%     Info = #info{tab = Tab,
-%% 		 key = Key,
-%% 		 fullname = Fname,
-%% 		 recname = mnesia:table_info(Tab, record_name)},
-%%     try read_file_info1(Fname, Info, 1)
-%%     catch
-%% 	error:Reason ->
-%% 	    mnesia:abort({Reason, erlang:get_stacktrace()})
-%%     end.
-
-%% read_file_info1(Fname, Info, X) when X < 100 ->
-%%     case file:read_link_info(Fname) of
-%% 	{ok, #file_info{type = symlink}} ->
-%% 	    case file:read_link(Fname) of
-%% 		{ok, NewLink} ->
-%% 		    read_file_info1(NewLink, X+1, Info);
-%% 		Error ->
-%% 		    mnesia:abort({Error, Info})
-%% 	    end;
-%% 	{ok, #file_info{} = FI} ->
-%% 	    Attrs = tl(tuple_to_list(FI)),
-%% 	    Read = fun() ->
-%% 			   {ok, Bin} = file:read_file(Fname),
-%% 			   Bin
-%% 		   end,
-%% 	    Tup = list_to_tuple([Fname, Info#info.key, data | Attrs]),
-%% 	    {_, Map} = mnesia:read_table_property(
-%% 			 Info#info.tab, rofs_attr_map),
-%% 	    Rec = list_to_tuple([Info#info.recname |
-%% 				 lists:map(
-%% 				   fun(3) ->
-%% 					   Read();  % fetch the data
-%% 				      (P) ->
-%% 					   element(P, Tup)
-%% 				   end, Map)]),
-%% 	    [Rec];	    
-%% 	{error, enoent} ->
-%% 	    []
-%%     end.
 
 lookup(Alias, Tab, Key0) ->
     Key = encode_key(Alias, Tab, Key0),
@@ -689,8 +646,18 @@ do_delete(Alias, Tab, Key, MP) ->
     ok = file:delete(Fullname),
     Deleted.
 
-match_delete(_Alias, _Tab, _Pat) ->
-    erlang:error({not_allowed, [{?MODULE,match_erase,[_Tab, _Pat]}]}).
+match_delete(Alias, Tab, Pat) ->
+    MP = data_mountpoint(Tab),
+    Fun = fun(Obj, N) ->
+		  Key = element(2, Obj),
+		  case do_delete(Alias, Tab, Key, MP) of
+		      false -> N;
+		      true -> N+1
+		  end
+	  end,
+    Tot = fold(Alias, Tab, Fun, 0, [{Pat,[],['$_']}], 30),
+    call(Alias, Tab, {incr_size, -Tot}),
+    ok.
 
 first(Alias, Tab) ->
     MP = data_mountpoint(Tab),
@@ -808,22 +775,6 @@ do_prev1([H|T], Dir, Type) ->
 do_prev1([], _, _) ->
     '$end_of_table'.
 
-		    %% Either prev was the last in the list, or has been 
-		    %% deleted
-    %% F = fun(keypat, File) ->
-    %% 		lists:prefix(File, Fullname) orelse File > Fullname;
-    %% 	   (key, File) ->
-    %% 		case File > Fullname of
-    %% 		    true ->
-    %% 			[File];
-    %% 		    false ->
-    %% 			[]
-    %% 		end;
-    %% 	   (data, Objs) ->
-    %% 		Objs
-    %% 	   end,
-    %% do_select(Alias, Tab, MP, F, 2).
-
 get_parent(F) ->
     Dir = filename:dirname(F),
     Base = filename:basename(F),
@@ -865,13 +816,13 @@ update_counter(_Alias, _Tab, _C, _Val) ->
 clear_table(_Alias, _Tab) ->
     ok.
 
-%% fold(Alias, Tab, Fun, Acc, N) ->
-%%     fold(select(Alias, Tab, [{'_',[],['$_']}], N), Fun, Acc).
+fold(Alias, Tab, Fun, Acc, MS, N) ->
+    fold1(select(Alias, Tab, MS, N), Fun, Acc).
 
-%% fold('$end_of_table', _, Acc) ->
-%%     Acc;
-%% fold({L, Cont}, Fun, Acc) ->
-%%     fold(select(Cont), Fun, lists:foldl(Fun, Acc, L)).
+fold1('$end_of_table', _, Acc) ->
+    Acc;
+fold1({L, Cont}, Fun, Acc) ->
+    fold1(select(Cont), Fun, lists:foldl(Fun, Acc, L)).
 
 is_key_prefix(File, Fun) when is_function(Fun) ->
     Fun(File);
@@ -968,7 +919,7 @@ do_select(Alias, Tab, Dir, MS, Limit) ->
 		   _ ->
 		       MP
 	       end,
-    do_fold_dir(StartDir, Sel, [], Limit).
+    do_search_dir(StartDir, Sel, [], Limit).
 
 needs_key_only([{HP,_,Body}]) ->
     BodyVars = lists:flatmap(fun extract_vars/1, Body),
@@ -1039,10 +990,10 @@ remove_ending_slash(D) ->
 	    D
     end.
 
-do_fold_dir(Dir, Sel, Acc, N) ->
+do_search_dir(Dir, Sel, Acc, N) ->
     case list_dir(Dir, Sel#sel.type) of
 	{ok, Fs} ->
-	    do_fold(Fs, Dir, Sel, Acc, N,
+	    do_search(Fs, Dir, Sel, Acc, N,
 		    fun(Acc1, _) ->
 			    {lists:reverse(Acc1), fun() -> '$end_of_table' end}
 		    end);
@@ -1050,37 +1001,37 @@ do_fold_dir(Dir, Sel, Acc, N) ->
 	    '$end_of_table'
     end.
 
-do_fold([], _, _, Acc, N, C) ->
+do_search([], _, _, Acc, N, C) ->
     C(Acc, N);
-do_fold(Fs, Dir, #sel{limit = Lim} = Sel, Acc, 0, C) ->
+do_search(Fs, Dir, #sel{limit = Lim} = Sel, Acc, 0, C) ->
     {lists:reverse(Acc), fun() ->
-				 do_fold(Fs, Dir, Sel, [], Lim, C)
+				 do_search(Fs, Dir, Sel, [], Lim, C)
 			 end};
-do_fold([F|Fs], Dir, #sel{keypat = KeyPat} = Sel, Acc, N, C) ->
+do_search([F|Fs], Dir, #sel{keypat = KeyPat} = Sel, Acc, N, C) ->
     Filename = filename:join(Dir, F),
     case is_key_prefix(Filename, KeyPat) of
 	true ->
 	    follow_file(Filename, Fs, Dir, Sel, Acc, N, C);
 	false ->
-	    do_fold(Fs, Dir, Sel, Acc, N, C)
+	    do_search(Fs, Dir, Sel, Acc, N, C)
     end.
 
 follow_file(Filename, Fs, Dir, Sel, Acc, N, C) ->
     case list_dir(Filename, Sel#sel.type) of
 	{ok, Fs1} ->
 	    C1 = fun(Acc1, N1) ->
-			 do_fold(Fs, Dir, Sel, Acc1, N1, C)
+			 do_search(Fs, Dir, Sel, Acc1, N1, C)
 		 end,
-	    do_fold(Fs1, Filename, Sel, Acc, N, C1);
+	    do_search(Fs1, Filename, Sel, Acc, N, C1);
 	{error, enotdir} ->
 	    case match_file(Filename, Sel) of
 		{match, Result} ->
-		    do_fold(Fs, Dir, Sel, [Result|Acc], decr(N), C);
+		    do_search(Fs, Dir, Sel, [Result|Acc], decr(N), C);
 		nomatch ->
-		    do_fold(Fs, Dir, Sel, Acc, N, C)
+		    do_search(Fs, Dir, Sel, Acc, N, C)
 	    end;
 	{error, enoent} ->
-	    do_fold(Fs, Dir, Sel, Acc, N, C)
+	    do_search(Fs, Dir, Sel, Acc, N, C)
     end.
 
 list_dir(Dir, Type) ->
