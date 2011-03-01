@@ -643,7 +643,7 @@ do_delete(Alias, Tab, Key, MP) ->
 		  {ok, _} ->
 		      true
 	      end,
-    ok = file:delete(Fullname),
+    file:delete(Fullname),
     Deleted.
 
 match_delete(Alias, Tab, Pat) ->
