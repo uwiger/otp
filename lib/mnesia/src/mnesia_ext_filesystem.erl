@@ -308,16 +308,56 @@ delete_file_or_dir(F, N) ->
 validate_key(Alias, Tab, RecName, Arity, Type, Key) ->
     %% RecName, Arity and Type have already been validated
     try begin
-	    _NewKey = encode_key(Alias, Tab, Key),
+	    NewKey = encode_key(Alias, Tab, Key),
+	    is_legal_key(Alias, Tab, NewKey),
 	    {RecName, Arity, Type}
 	end
     catch
 	error:_ -> mnesia:abort(bad_type, [Tab, Key])
     end.
 
+is_legal_key(Alias, Tab, Key) when Alias =/= fstab_copies ->
+    MP = data_mountpoint(Tab),
+    FN = fullname(Tab, Key, MP),
+    case file:read_file_info(FN) of
+	{error, enoent} ->
+	    case is_valid_dir(FN, MP) of
+		ok ->
+		    ok;
+		{error,_} = Err ->
+		    mnesia:abort(Err)
+	    end;
+	{ok, #file_info{type = regular}} ->
+	    ok;
+	{ok, #file_info{type = directory}} ->
+	    mnesia:abort({error, eisdir})
+    end;
+is_legal_key(_, _, _) ->
+    ok.
+
+
+is_valid_dir(D, D) ->
+    ok;
+is_valid_dir(F, MP) ->
+    D = filename:dirname(F),
+    case file:read_file_info(D) of
+	{error, enoent} ->
+	    is_valid_dir(D, MP);
+	{ok, #file_info{type = directory,
+			access = Access}} ->
+	    if Access == read_write ->
+		    ok;
+	       true ->
+		    {error, eacces}
+	    end;
+	{ok, #file_info{}} ->
+	    {error, enotdir}
+    end.
+
 validate_record(Alias, Tab, RecName, Arity, Type, Obj) ->
     %% RecName, Arity and Type have already been validated
-    _Key = encode_key(Alias, Tab, element(2, Obj)),
+    Key = encode_key(Alias, Tab, element(2, Obj)),
+    is_legal_key(Alias, Tab, Key),
     {RecName, Arity, Type}.
 
 %% For 'fs_copies', we should really use a key encoding scheme that 
@@ -574,15 +614,21 @@ insert(Alias, Tab, Obj) ->
 do_insert(Alias, Tab, Obj, MP) ->
     Key = encode_key(Alias, Tab, element(2, Obj)),
     Fullname = fullname(Tab, Key, MP),
-    ok = filelib:ensure_dir(Fullname),
-    Added = case file:read_file_info(Fullname) of
+    case filelib:ensure_dir(Fullname) of
+	{error, _} = Err ->
+	    Err;
+	ok ->
+	    case file:read_file_info(Fullname) of
 		{error, enoent} ->
+		    ok = write_object(Alias, Fullname, Obj),
 		    true;
-		{ok, _} ->
-		    false
-	    end,
-    ok = write_object(Alias, Fullname, Obj),
-    Added.
+		{ok, #file_info{type = regular}} ->
+		    ok = write_object(Alias, Fullname, Obj),
+		    false;
+		{ok, #file_info{type = directory}} ->
+		    {error, eisdir}
+	    end
+    end.
 
 write_object(Alias, Fullname, Obj) when Alias==fs_copies; Alias==fstab_copies ->
     file:write_file(Fullname, term_to_binary(Obj, [compressed]));
@@ -1121,6 +1167,8 @@ call(Alias, Tab, Req) ->
     case gen_server:call(proc_name(Alias, Tab), Req, infinity) of
 	badarg ->
 	    mnesia:abort(badarg);
+	{abort, _} = Err ->
+	    mnesia:abort(Err);
 	Reply ->
 	    Reply
     end.
@@ -1164,11 +1212,13 @@ handle_call({insert, Obj}, _From, #st{data_mp = MP,
 				      alias = Alias, tab = Tab} = St) ->
     case do_insert(Alias, Tab, Obj, MP) of
 	true ->
-	    incr_size(St, 1);
+	    incr_size(St, 1),
+	    {reply, ok, St};
 	false ->
-	    ignore
-    end,
-    {reply, ok, St};
+	    {reply, ok, St};
+	{error, E} ->
+	    {reply, {abort, E}, St}
+    end;
 handle_call({delete, Key}, _From, #st{data_mp = MP,
 				      alias = Alias, tab = Tab} = St) ->
     case do_delete(Alias, Tab, Key, MP) of
