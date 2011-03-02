@@ -324,9 +324,11 @@ is_legal_key(Alias, Tab, Key) when Alias =/= fstab_copies ->
 	    case is_valid_dir(FN, MP) of
 		ok ->
 		    ok;
-		{error,_} = Err ->
-		    mnesia:abort(Err)
+		Other ->
+		    mnesia:abort(Other)
 	    end;
+	{error, _} = OtherErr ->
+	    mnesia:abort(OtherErr);
 	{ok, #file_info{type = regular}} ->
 	    ok;
 	{ok, #file_info{type = directory}} ->
