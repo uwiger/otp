@@ -546,22 +546,16 @@ write(_Tid, _Ts, Tab, Val, LockKind) ->
     abort({bad_type, Tab, Val, LockKind}).
 
 write_to_store(Tab, Store, Oid, Val) ->
-    case ?catch_val({Tab, record_validation}) of
-	{RecName, Arity, Type}
-	  when tuple_size(Val) == Arity, RecName == element(1, Val) ->
-	    case Type of
-		bag ->
-		    ?ets_insert(Store, {Oid, Val, write});
-		_  ->
-		    ?ets_delete(Store, Oid),
-		    ?ets_insert(Store, {Oid, Val, write})
-	    end, 
-	    ok;
-	{'EXIT', _} ->
-	    abort({no_exists, Tab});
-	_ ->
-	    abort({bad_type, Val})
-    end.
+    {_, _, Type} = mnesia_lib:validate_record(Tab, Val),
+    Oid = {Tab, element(2, Val)},
+    case Type of
+	bag ->
+	    ?ets_insert(Store, {Oid, Val, write});
+	_  ->
+	    ?ets_delete(Store, Oid),
+	    ?ets_insert(Store, {Oid, Val, write})
+    end,
+    ok.
 
 delete({Tab, Key}) ->
     delete(Tab, Key, write);
@@ -1536,16 +1530,9 @@ dirty_write(Tab, Val) ->
 
 do_dirty_write(SyncMode, Tab, Val)
   when is_atom(Tab), Tab /= schema, is_tuple(Val), tuple_size(Val) > 2 ->
-    case ?catch_val({Tab, record_validation}) of
-	{RecName, Arity, _Type}
-	when tuple_size(Val) == Arity, RecName == element(1, Val) ->
-	    Oid = {Tab, element(2, Val)},
-	    mnesia_tm:dirty(SyncMode, {Oid, Val, write});
-	{'EXIT', _} ->
-	    abort({no_exists, Tab});
-	_ ->
-	    abort({bad_type, Val})
-    end;
+    {_, _, _} = mnesia_lib:validate_record(Tab, Val),
+    Oid = {Tab, element(2, Val)},
+    mnesia_tm:dirty(SyncMode, {Oid, Val, write});
 do_dirty_write(_SyncMode, Tab, Val) ->
     abort({bad_type, Tab, Val}).
 
@@ -1597,7 +1584,7 @@ dirty_update_counter(Tab, Key, Incr) ->
     
 do_dirty_update_counter(SyncMode, Tab, Key, Incr)
   when is_atom(Tab), Tab /= schema, is_integer(Incr) ->
-    case ?catch_val({Tab, record_validation}) of
+    case mnesia_lib:validate_key(Tab, Key) of
 	{RecName, 3, set} ->
 	    Oid = {Tab, Key},
 	    mnesia_tm:dirty(SyncMode, {Oid, {RecName, Incr}, update_counter});
@@ -1902,6 +1889,8 @@ raw_table_info(Tab, Item) ->
 	    info_reply(catch ?ets_info(Tab, Item), Tab, Item);
 	disc_only_copies ->
 	    info_reply(catch dets:info(Tab, Item), Tab, Item);
+        {ext, Alias, Mod} ->
+            info_reply(catch Mod:info(Alias, Tab, Item), Tab, Item);
 	unknown ->
 	    bad_info_reply(Tab, Item);
 	{'EXIT', _} ->
@@ -2017,13 +2006,14 @@ display_tab_info() ->
 
     Tabs = system_info(tables),
     
-    {Unknown, Ram, Disc, DiscOnly} =
-	lists:foldl(fun storage_count/2, {[], [], [], []}, Tabs),
+    {Unknown, Ram, Disc, DiscOnly, Ext} =
+	lists:foldl(fun storage_count/2, {[], [], [], [], []}, Tabs),
     
     io:format("remote             = ~p~n", [lists:sort(Unknown)]),
     io:format("ram_copies         = ~p~n", [lists:sort(Ram)]),
     io:format("disc_copies        = ~p~n", [lists:sort(Disc)]),
     io:format("disc_only_copies   = ~p~n", [lists:sort(DiscOnly)]),
+    io:format("external_copies    = ~p~n", [lists:sort(Ext)]),
     
     Rfoldl = fun(T, Acc) ->
 		     Rpat =
@@ -2044,12 +2034,13 @@ display_tab_info() ->
     Rdisp = fun({Rpat, Rtabs}) -> io:format("~p = ~p~n", [Rpat, Rtabs]) end,
     lists:foreach(Rdisp, lists:sort(Repl)).
 
-storage_count(T, {U, R, D, DO}) ->
+storage_count(T, {U, R, D, DO, Ext}) ->
     case table_info(T, storage_type) of
-	unknown -> {[T | U], R, D, DO};
-	ram_copies -> {U, [T | R], D, DO};
-	disc_copies -> {U, R, [T | D], DO};
-	disc_only_copies -> {U, R, D, [T | DO]}
+	unknown -> {[T | U], R, D, DO, Ext};
+	ram_copies -> {U, [T | R], D, DO, Ext};
+	disc_copies -> {U, R, [T | D], DO, Ext};
+	disc_only_copies -> {U, R, D, [T | DO], Ext};
+        {ext, _, _} -> {U, R, D, DO, [T | Ext]}
     end.
 
 system_info(Item) ->
@@ -2065,9 +2056,10 @@ system_info2(all) ->
 system_info2(db_nodes) ->
     DiscNs = ?catch_val({schema, disc_copies}),
     RamNs = ?catch_val({schema, ram_copies}),
+    ExtNs = ?catch_val({schema, external_copies}),
     if
-	is_list(DiscNs), is_list(RamNs) ->
-	    DiscNs ++ RamNs;
+	is_list(DiscNs), is_list(RamNs), is_list(ExtNs) ->
+	    DiscNs ++ RamNs ++ ExtNs;
 	true ->
 	    case mnesia_schema:read_nodes() of
 		{ok, Nodes} -> Nodes;
@@ -2171,6 +2163,7 @@ system_info2(access_module) -> mnesia_monitor:get_env(access_module);
 system_info2(auto_repair) -> mnesia_monitor:get_env(auto_repair);
 system_info2(is_running) -> mnesia_lib:is_running();
 system_info2(backup_module) -> mnesia_monitor:get_env(backup_module);
+system_info2(backend_types) -> mnesia_schema:backend_types();
 system_info2(event_module) -> mnesia_monitor:get_env(event_module);
 system_info2(debug) -> mnesia_monitor:get_env(debug);
 system_info2(dump_log_load_regulation) -> mnesia_monitor:get_env(dump_log_load_regulation);
@@ -2209,6 +2202,7 @@ system_info_items(yes) ->
      access_module,
      auto_repair,
      backup_module,
+     backend_types,
      checkpoints,
      db_nodes,
      debug,
