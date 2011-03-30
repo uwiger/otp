@@ -56,7 +56,7 @@
 -export([start/0, stop/1]).
 
 %% Debug exports
--export([open_int/4, open_mode/1, open_mode/4]).
+-export([open_int/5, open_mode/1, open_mode/4]).
 
 %%%-----------------------------------------------------------------
 %%% Includes and defines
@@ -159,7 +159,7 @@ open(Port, File, ModeList) when is_port(Port),
                                 is_list(ModeList) ->
     case open_mode(ModeList) of
 	{Mode, _Portopts, _Setopts} ->
-	    open_int(Port, File, Mode, []);
+	    open_int(Port, File, Mode, [], ModeList);
 	Reason ->
 	    {error, Reason}
     end;
@@ -171,7 +171,7 @@ open(File, ModeList) when (is_list(File) orelse is_binary(File)),
 			  is_list(ModeList) ->
     case open_mode(ModeList) of
 	{Mode, Portopts, Setopts} ->
-	    open_int({?FD_DRV, Portopts},File, Mode, Setopts);
+	    open_int({?FD_DRV, Portopts},File, Mode, Setopts, ModeList);
 	Reason ->
 	    {error, Reason}
     end;
@@ -190,21 +190,21 @@ open(Portopts) when is_list(Portopts) ->
 open(_) ->
     {error, badarg}.
 
-open_int({Driver, Portopts}, File, Mode, Setopts) ->
+open_int({Driver, Portopts}, File, Mode, Setopts, ModeList) ->
     case drv_open(Driver, Portopts) of
 	{ok, Port} ->
-	    open_int(Port, File, Mode, Setopts);
+	    open_int(Port, File, Mode, Setopts, ModeList);
 	{error, _} = Error ->
-	    Error
+	    try_zip_open_file(Error, File, Mode, ModeList)
     end;
-open_int(Port, File, Mode, Setopts) ->
+open_int(Port, File, Mode, Setopts, ModeList) ->
     M = Mode band ?EFILE_MODE_MASK,
     case drv_command(Port, [<<?FILE_OPEN, M:32>>, pathname(File)]) of
 	{ok, Number} ->
 	    open_int_setopts(Port, Number, Setopts);
 	Error ->
 	    drv_close(Port),
-	    Error
+	    try_zip_open_file(Error, File, Mode, ModeList)
     end.
 
 open_int_setopts(Port, Number, []) ->
@@ -229,6 +229,8 @@ close(#file_descriptor{module = ?MODULE, data = {Port, _}}) ->
 	Error ->
 	    Error
     end;
+close(#file_descriptor{module = prim_ram_file} = Fd) ->
+    prim_ram_file:close(Fd);
 %% Closes a port opened with open/1.
 close(Port) when is_port(Port) ->
     drv_close(Port).
@@ -360,7 +362,9 @@ read_line(#file_descriptor{module = ?MODULE, data = {Port, _}}) ->
 	    end;
 	Error ->
 	    Error
-    end.
+    end;
+read_line(#file_descriptor{module = prim_ram_file} = Fd) ->
+    prim_ram_file:read_line(Fd).
 	
 %% Returns {ok, Data} | eof | {error, Reason}.
 read(#file_descriptor{module = ?MODULE, data = {Port, _}}, Size)
@@ -389,12 +393,16 @@ read(#file_descriptor{module = ?MODULE, data = {Port, _}}, Size)
 	    end;
 	true ->
 	    {error, einval}
-    end.
+    end;
+read(#file_descriptor{module = prim_ram_file} = Fd, Size) ->
+    prim_ram_file:read(Fd, Size).
 
 %% Returns {ok, [Data|eof, ...]} | {error, Reason}
 pread(#file_descriptor{module = ?MODULE, data = {Port, _}}, L)
   when is_list(L) ->
-    pread_int(Port, L, 0, []).
+    pread_int(Port, L, 0, []);
+pread(#file_descriptor{module = prim_ram_file} = Fd, L) ->
+    prim_ram_file:pread(Fd, L).
 
 pread_int(_, [], 0, []) ->
     {ok, []};
@@ -448,7 +456,10 @@ position(#file_descriptor{module = ?MODULE, data = {Port, _}}, At) ->
 	    {error, einval};
 	Reason ->
 	    {error, Reason}
-    end.
+    end;
+position(#file_descriptor{module = prim_ram_file} = Fd, At) ->
+    prim_ram_file:position(Fd, At).
+
 
 %% Returns {error, Reaseon} | ok.
 truncate(#file_descriptor{module = ?MODULE, data = {Port, _}}) ->
@@ -484,6 +495,8 @@ ipread_s32bu_p32bu(#file_descriptor{module = ?MODULE, data = {Port, _}},
 	true ->
 	    {error, einval}
     end;
+ipread_s32bu_p32bu(#file_descriptor{module = prim_ram_file} = Fd,Offs,MaxSize) ->
+    prim_ram_file:ipread_s32bu_p32bu(Fd, Offs, MaxSize);
 ipread_s32bu_p32bu(#file_descriptor{module = ?MODULE, data = {_, _}},
 		   _Offs,
 		   _MaxSize) ->
@@ -515,14 +528,12 @@ read_file(Port, File) when is_port(Port),
 	    %% if the file server has some references
 	    %% to binaries read earlier.
 	    erlang:garbage_collect(),
-	    drv_command(Port, Cmd);
+	    try_zip_read_file(drv_command(Port, Cmd), File);
 	Result ->
-	    Result
+	    try_zip_read_file(Result, File)
     end;
 read_file(_,_) ->
     {error, badarg}.
-
-    
 
 %% Returns {error, Reason} | ok.
 write_file(File, Bin) when (is_list(File) orelse is_binary(File)) ->
@@ -537,6 +548,142 @@ write_file(File, Bin) when (is_list(File) orelse is_binary(File)) ->
 write_file(_, _) -> 
     {error, badarg}.
     
+
+%% .ez archive functions
+%% -------------------------------------------------
+in_ez_archive(File) ->
+    in_ez_archive(File, []).
+
+in_ez_archive(".ez/" ++ Rest, Acc) ->
+    {true, {lists:reverse("ze." ++ Acc), Rest}};
+in_ez_archive([H|T], Acc) ->
+    in_ez_archive(T, [H|Acc]);
+in_ez_archive([], _) ->
+    false.
+
+try_zip_open_file({error, enotdir} = E0, File, Mode, ModeList) ->
+    case in_ez_archive(File) of
+	{true, {Archive, RelName}} when Mode band ?EFILE_MODE_WRITE =:= 0 ->
+	    zip_open_file(Archive, RelName, Mode, ModeList);
+	{true, _} ->
+	    {error, eacces};
+	_ ->
+	    E0
+    end;
+try_zip_open_file(E, _, _, _) ->
+    E.
+
+
+try_zip_read_file({error, enotdir} = E0, File) ->
+    case in_ez_archive(File) of
+	{true, {Archive, RelName}} ->
+	    zip_read_file(Archive, RelName);
+	false ->
+	    E0
+    end;
+try_zip_read_file(E, _) ->
+    E.
+
+try_zip_read_file_info({error, enotdir} = E0, File) ->
+    case in_ez_archive(File) of
+	{true, {Archive, RelName}} ->
+	    zip_read_file_info(Archive, RelName);
+	false ->
+	    E0
+    end;
+try_zip_read_file_info(E, _) ->
+    E.
+
+try_zip_list_dir({error, enotdir} = E0, Dir) ->
+    case in_ez_archive(Dir) of
+	{true, {Archive, RelName}} ->
+	    zip_list_dir(Archive, RelName);
+	false ->
+	    E0
+    end;
+try_zip_list_dir(E, _) ->
+    E.
+
+
+zip_open_file(Archive, RelName, Mode, ModeList) ->
+    case zip_read_file(Archive, RelName) of
+	{ok, Bin} ->
+	    prim_ram_file:open(Bin, ModeList);
+	{error, _} = Error ->
+	    Error
+    end.
+
+zip_read_file(Archive, RelName) ->
+    Filter = fun({F, _GetInfo, GetBin}, _Acc) when F =:= RelName ->
+		     throw({ok, GetBin()});
+		(_, Acc) ->
+		     {_Continue = true, _Include = false, Acc}
+	     end,
+    try prim_zip:open(Filter, [], Archive) of
+	Result ->
+	    Result
+    catch
+	throw:{ok, _} = Ok ->
+	    Ok
+    end.
+
+zip_read_file_info(Archive, RelName) ->
+    Filter = fun({F, GetInfo, _GetBin}, _Acc) when F =:= RelName ->
+		     throw({ok, GetInfo()});
+		(_, Acc) ->
+		     {_Continue = true, _Include = false, Acc}
+	     end,
+    try prim_zip:open(Filter, [], Archive) of
+	Result ->
+	    Result
+    catch
+	throw:{ok, _} = Ok ->
+	    Ok
+    end.
+
+zip_list_dir(Archive, RelName) ->
+    Filter = fun({F, _GetInfo, _GetBin}, Acc) ->
+		     case prefix(RelName, F) of
+			 {true, "/" ++ Rest} ->
+			     case to_slash(Rest) of
+				 [] ->
+				     {_Continue = true, _Include = false, Acc};
+				 Part ->
+				     Acc1 =
+					 case lists:member(Part, Acc) of
+					     false -> [Part | Acc];
+					     true  -> Acc
+					 end,
+				     {true, false, Acc1}
+			     end;
+			 false ->
+			     {true, false, Acc}
+		     end
+	     end,
+    case prim_zip:open(Filter, [], Archive) of
+	{ok, _, Res} ->
+	    {ok, Res};
+	Error ->
+	    Error
+    end.
+
+prefix([H|T1], [H|T2]) ->
+    prefix(T1, T2);
+prefix([], T) ->
+    {true, T};
+prefix(_, _) ->
+    false.
+
+to_slash(Str) ->
+    to_slash(Str, []).
+
+to_slash("/" ++ _, Acc) ->
+    lists:reverse(Acc);
+to_slash([], Acc) ->
+    lists:reverse(Acc);
+to_slash([H|T], Acc) ->
+    to_slash(T, [H|Acc]).
+
 
 
 %%%-----------------------------------------------------------------
@@ -707,7 +854,8 @@ read_file_info(Port, File) when is_port(Port) ->
     read_file_info_int(Port, File).
 
 read_file_info_int(Port, File) ->
-    drv_command(Port, [?FILE_FSTAT, pathname(File)]).
+    try_zip_read_file_info(
+      drv_command(Port, [?FILE_FSTAT, pathname(File)]), File).
 
 %% altname/{1,2}
 
@@ -811,7 +959,12 @@ list_dir(Dir) ->
     list_dir_int({?DRV, [binary]}, Dir).
 
 list_dir(Port, Dir) when is_port(Port) ->
-    list_dir_int(Port, Dir).
+    case list_dir_int(Port, Dir) of
+	{error, _} = Error ->
+	    try_zip_list_dir(Error, Dir);
+	Other ->
+	    Other
+    end.
 
 list_dir_int(Port, Dir) ->
     drv_command(Port, [?FILE_READDIR, pathname(Dir)], []).

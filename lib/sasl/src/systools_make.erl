@@ -1331,7 +1331,8 @@ mandatory_modules() ->
 
 preloaded() ->
     %% Sorted
-    [erl_prim_loader,erlang,init,otp_ring0,prim_file,prim_inet, prim_zip,zlib]. 
+    [erl_prim_loader,erlang,init,otp_ring0,prim_file,prim_inet,
+     prim_ram_file,prim_zip,zlib]. 
 
 %%______________________________________________________________________
 %% Kernel processes; processes that are specially treated by the init

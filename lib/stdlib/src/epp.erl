@@ -636,7 +636,20 @@ scan_include(_Toks, Inc, From, St) ->
 
 find_lib_dir(NewName) ->
     [Lib | Rest] = filename:split(NewName),
-    {code:lib_dir(list_to_atom(Lib)), Rest}.
+    case lib_dir_from_app(code:where_is_file(Lib ++ ".app")) of
+	non_existing ->
+	    {code:lib_dir(list_to_atom(Lib)), Rest};
+	D ->
+	    {D, Rest}
+    end.
+
+lib_dir_from_app(non_existing) ->
+    non_existing;
+lib_dir_from_app(F) ->
+    case lists:reverse(filename:split(F)) of
+	[_, "ebin" | Rest] ->
+	    filename:join(lists:reverse(Rest))
+    end.
 
 scan_include_lib([{'(',_Llp},{string,_Lf,_NewName0},{')',_Lrp},{dot,_Ld}],
                  Inc, From, St)

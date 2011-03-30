@@ -557,6 +557,7 @@ $(TARGET)/beams.rc: $(ERL_TOP)/erts/preloaded/ebin/otp_ring0.beam \
 			$(ERL_TOP)/erts/preloaded/ebin/init.beam \
 			$(ERL_TOP)/erts/preloaded/ebin/prim_inet.beam \
 			$(ERL_TOP)/erts/preloaded/ebin/prim_file.beam \
+			$(ERL_TOP)/erts/preloaded/ebin/prim_ram_file.beam \
 			$(ERL_TOP)/erts/preloaded/ebin/zlib.beam \
 			$(ERL_TOP)/erts/preloaded/ebin/prim_zip.beam \
 			$(ERL_TOP)/erts/preloaded/ebin/erl_prim_loader.beam \
@@ -567,6 +568,7 @@ $(TARGET)/preload.c: $(ERL_TOP)/erts/preloaded/ebin/otp_ring0.beam \
 			$(ERL_TOP)/erts/preloaded/ebin/init.beam \
 			$(ERL_TOP)/erts/preloaded/ebin/prim_inet.beam \
 			$(ERL_TOP)/erts/preloaded/ebin/prim_file.beam \
+			$(ERL_TOP)/erts/preloaded/ebin/prim_ram_file.beam \
 			$(ERL_TOP)/erts/preloaded/ebin/zlib.beam \
 			$(ERL_TOP)/erts/preloaded/ebin/prim_zip.beam \
 			$(ERL_TOP)/erts/preloaded/ebin/erl_prim_loader.beam \

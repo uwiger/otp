@@ -37,6 +37,7 @@ PRE_LOADED_MODULES = \
 	init \
 	prim_file \
 	prim_inet \
+	prim_ram_file \
 	zlib \
 	prim_zip \
 	otp_ring0 \
