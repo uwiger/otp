@@ -137,8 +137,6 @@ init(IgnoreFallback) ->
     verbose("Schema initiated from: ~p~n", [Source]),
     set({schema, tables}, []),
     set({schema, local_tables}, []),
-    %% do_set_schema(schema), % set up the schema table first of all
-    %% Tabs = [schema | set_schema(?ets_first(schema))],
     Tabs = set_schema(),
     lists:foreach(fun(Tab) -> clear_whereabouts(Tab) end, Tabs),
     set({schema, where_to_read}, node()),
@@ -173,14 +171,6 @@ set_schema() ->
 				      end, TabInfo)]],
     lists:foreach(fun do_set_schema/1, Tabs),
     Tabs.
-
-%% set_schema('$end_of_table') -> 
-%%     [];
-%% set_schema(schema) ->
-%%     set_schema(?ets_next(schema, schema));
-%% set_schema(Tab) when Tab =/= schema ->
-%%     do_set_schema(Tab),
-%%     [Tab | set_schema(?ets_next(schema, Tab))].
 
 get_create_list(Tab) ->
     ?ets_lookup_element(schema, Tab, 3).
