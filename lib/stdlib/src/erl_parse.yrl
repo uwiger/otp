@@ -526,7 +526,7 @@ Erlang code.
 -type abstract_form() :: term().
 -type error_description() :: term().
 -type error_info() :: {erl_scan:line(), module(), error_description()}.
--type token() :: {Tag :: atom(), Line :: erl_scan:line()}.
+-type tokens() :: erl_scan:tokens().
 
 %% mkop(Op, Arg) -> {op,Line,Op,Arg}.
 %% mkop(Left, Op, Right) -> {op,Line,Op,Left,Right}.
@@ -551,7 +551,7 @@ Erlang code.
 %% entry points working.
 
 -spec parse_form(Tokens) -> {ok, AbsForm} | {error, ErrorInfo} when
-      Tokens :: [token()],
+      Tokens :: tokens(),
       AbsForm :: abstract_form(),
       ErrorInfo :: error_info().
 parse_form([{'-',L1},{atom,L2,spec}|Tokens]) ->
@@ -562,7 +562,7 @@ parse_form(Tokens) ->
     parse(Tokens).
 
 -spec parse_exprs(Tokens) -> {ok, ExprList} | {error, ErrorInfo} when
-      Tokens :: [token()],
+      Tokens :: tokens(),
       ExprList :: [abstract_expr()],
       ErrorInfo :: error_info().
 parse_exprs(Tokens) ->
@@ -573,7 +573,7 @@ parse_exprs(Tokens) ->
     end.
 
 -spec parse_term(Tokens) -> {ok, Term} | {error, ErrorInfo} when
-      Tokens :: [token()],
+      Tokens :: tokens(),
       Term :: term(),
       ErrorInfo :: error_info().
 parse_term(Tokens) ->
@@ -995,14 +995,14 @@ abstract_list([], _Line) ->
 
 -spec tokens(AbsTerm) -> Tokens when
       AbsTerm :: abstract_expr(),
-      Tokens :: [token()].
+      Tokens :: tokens().
 tokens(Abs) ->
     tokens(Abs, []).
 
 -spec tokens(AbsTerm, MoreTokens) -> Tokens when
       AbsTerm :: abstract_expr(),
-      MoreTokens :: [token()],
-      Tokens :: [token()].
+      MoreTokens :: tokens(),
+      Tokens :: tokens().
 tokens({char,L,C}, More) -> [{char,L,C}|More];
 tokens({integer,L,N}, More) -> [{integer,L,N}|More];
 tokens({float,L,F}, More) -> [{float,L,F}|More];
