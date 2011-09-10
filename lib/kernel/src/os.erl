@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 1997-2010. All Rights Reserved.
+%% Copyright Ericsson AB 1997-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -24,7 +24,10 @@
 
 -include("file.hrl").
 
--spec type() -> 'vxworks' | {'unix',atom()} | {'win32',atom()} | {'ose',atom()}.
+-spec type() -> vxworks | {Osfamily, Osname} when
+      Osfamily :: unix | win32,
+      Osname :: atom().
+
 type() ->
     case erlang:system_info(os_type) of
 	{vxworks, _} ->
@@ -32,18 +35,27 @@ type() ->
 	Else -> Else
     end.
 
--spec version() -> string() | {non_neg_integer(),non_neg_integer(),non_neg_integer()}.
+-spec version() -> VersionString | {Major, Minor, Release} when
+      VersionString :: string(),
+      Major :: non_neg_integer(),
+      Minor :: non_neg_integer(),
+      Release :: non_neg_integer().
 version() ->
     erlang:system_info(os_version).
 
--spec find_executable(string()) -> string() | 'false'.
+-spec find_executable(Name) -> Filename | 'false' when
+      Name :: string(),
+      Filename :: string().
 find_executable(Name) ->
     case os:getenv("PATH") of
 	false -> find_executable(Name, []);
 	Path  -> find_executable(Name, Path)
     end.
 
--spec find_executable(string(), string()) -> string() | 'false'.
+-spec find_executable(Name, Path) -> Filename | 'false' when
+      Name :: string(),
+      Path :: string(),
+      Filename :: string().
 find_executable(Name, Path) ->
     Extensions = extensions(),
     case filename:pathtype(Name) of
@@ -82,8 +94,9 @@ verify_executable(Name0, [Ext|Rest], OrigExtensions) ->
 	    end;
 	_ ->
 	    case file:read_file_info(Name1) of
-		{ok, #file_info{mode=Mode}} when Mode band 8#111 =/= 0 ->
-		    %% XXX This test for execution permission is not full-proof
+		{ok, #file_info{type=regular,mode=Mode}}
+		when Mode band 8#111 =/= 0 ->
+		    %% XXX This test for execution permission is not fool-proof
 		    %% on Unix, since we test if any execution bit is set.
 		    {ok, Name1};
 		_ ->
@@ -136,7 +149,7 @@ reverse_element([$"|T]) ->	%"
 reverse_element(List) ->
     lists:reverse(List).
 
--spec extensions() -> [string()].
+-spec extensions() -> [string(),...].
 %% Extensions in lower case
 extensions() ->
     case type() of
@@ -146,7 +159,8 @@ extensions() ->
     end.
 
 %% Executes the given command in the default shell for the operating system.
--spec cmd(atom() | string() | [string()]) -> string().
+-spec cmd(Command) -> string() when
+      Command :: atom() | io_lib:chars().
 cmd(Cmd) ->
     validate(Cmd),
     case type() of
@@ -230,9 +244,13 @@ start_port_srv(Request) ->
 		catch
 		    error:_ -> false
 		end,
-    start_port_srv_loop(Request, StayAlive).
+    start_port_srv_handle(Request),
+    case StayAlive of
+	true -> start_port_srv_loop();
+	false -> exiting
+    end.
 
-start_port_srv_loop({Ref,Client}, StayAlive) ->
+start_port_srv_handle({Ref,Client}) ->
     Reply = try open_port({spawn, ?SHELL},[stream]) of
 		Port when is_port(Port) ->
 		    (catch port_connect(Port, Client)),
@@ -242,20 +260,18 @@ start_port_srv_loop({Ref,Client}, StayAlive) ->
 		error:Reason ->
 		    {Reason,erlang:get_stacktrace()}	    
 	    end,
-    Client ! {Ref,Reply},
-    case StayAlive of
-	true -> start_port_srv_loop(get_open_port_request(), true);
-	false -> exiting
-    end.
+    Client ! {Ref,Reply}.
 
-get_open_port_request() ->
+
+start_port_srv_loop() ->
     receive
 	{Ref, Client} = Request when is_reference(Ref),
 				     is_pid(Client) ->
-	    Request;
+	    start_port_srv_handle(Request);
 	_Junk ->
-	    get_open_port_request()
-    end.
+	    ignore
+    end,
+    start_port_srv_loop().
 
 %%
 %%  unix_get_data(Port) -> Result

@@ -1,7 +1,7 @@
 #
 # %CopyrightBegin%
 #
-# Copyright Ericsson AB 2003-2010. All Rights Reserved.
+# Copyright Ericsson AB 2003-2011. All Rights Reserved.
 #
 # The contents of this file are subject to the Erlang Public License,
 # Version 1.1, (the "License"); you may not use this file except in
@@ -52,7 +52,7 @@ CT_XML_FILES = $(CT_MODULES:=.xml)
 
 XML_APPLICATION_FILES = ref_man.xml
 XML_REF1_FILES = ct_run.xml
-XML_REF3_FILES = $(CT_XML_FILES)
+XML_REF3_FILES = $(CT_XML_FILES) ct_hooks.xml
 XML_REF6_FILES = common_test_app.xml
 
 XML_PART_FILES = part.xml 
@@ -71,6 +71,7 @@ XML_CHAPTER_FILES = \
 	cover_chapter.xml \
 	ct_master_chapter.xml \
 	event_handler_chapter.xml \
+	ct_hooks_chapter.xml \
 	dependencies_chapter.xml \
 	notes.xml \
 	notes_history.xml 

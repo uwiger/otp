@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2008-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2008-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -23,14 +23,14 @@
 
 -include("public_key.hrl").
 
--export([decode_cert/1, transform/2]).
+-export([decode_cert/1, transform/2, supportedPublicKeyAlgorithms/1]).
 
 %%====================================================================
 %% Internal application API
 %%====================================================================
 
 %%--------------------------------------------------------------------
--spec decode_cert(der_encoded()) -> {ok, #'OTPCertificate'{}}.
+-spec decode_cert(DerCert::binary()) -> {ok, #'OTPCertificate'{}}.
 %%
 %% Description: Recursively decodes a Certificate. 
 %%-------------------------------------------------------------------- 
@@ -80,15 +80,23 @@ transform(Other,_) ->
     Other.
 
 %%--------------------------------------------------------------------
-%%% Internal functions
+-spec supportedPublicKeyAlgorithms(Oid::tuple()) -> asn1_type().
+%%
+%% Description: Returns the public key type for an algorithm
+%% identifier tuple as found in SubjectPublicKeyInfo.
+%%
 %%--------------------------------------------------------------------
-
-%%% SubjectPublicKey
 supportedPublicKeyAlgorithms(?'rsaEncryption') -> 'RSAPublicKey';
 supportedPublicKeyAlgorithms(?'id-dsa') -> 'DSAPublicKey';
 supportedPublicKeyAlgorithms(?'dhpublicnumber') -> 'DHPublicKey';
 supportedPublicKeyAlgorithms(?'id-keyExchangeAlgorithm') -> 'KEA-PublicKey';
 supportedPublicKeyAlgorithms(?'id-ecPublicKey') -> 'ECPoint'.
+
+%%--------------------------------------------------------------------
+%%% Internal functions
+%%--------------------------------------------------------------------
+
+%%% SubjectPublicKey
 
 decode_supportedPublicKey(#'OTPSubjectPublicKeyInfo'{algorithm= PA =
 						  #'PublicKeyAlgorithm'{algorithm=Algo},

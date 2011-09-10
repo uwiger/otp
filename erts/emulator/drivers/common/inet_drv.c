@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 1997-2010. All Rights Reserved.
+ * Copyright Ericsson AB 1997-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -490,7 +490,6 @@ static int my_strncasecmp(const char *s1, const char *s2, size_t n)
 #define TCP_REQ_RECV           42
 #define TCP_REQ_UNRECV         43
 #define TCP_REQ_SHUTDOWN       44
-#define TCP_REQ_MULTI_OP       45
 /* UDP and SCTP requests */
 #define PACKET_REQ_RECV        60 /* Common for UDP and SCTP         */
 #define SCTP_REQ_LISTEN	       61 /* Different from TCP; not for UDP */
@@ -1763,7 +1762,6 @@ send_async_error(ErlDrvPort port, ErlDrvTermData Port, int Ref,
 			LOAD_INT_CNT + 2*LOAD_TUPLE_CNT];
     int i = 0;
     
-    i = 0;
     i = LOAD_ATOM(spec, i, am_inet_async);
     i = LOAD_PORT(spec, i, Port);
     i = LOAD_INT(spec, i, Ref);
@@ -1950,7 +1948,7 @@ static int http_response_inetdrv(void *arg, int major, int minor,
     tcp_descriptor* desc = (tcp_descriptor*) arg;
     int i = 0;
     ErlDrvTermData spec[27];
-    ErlDrvTermData caller;
+    ErlDrvTermData caller = ERL_DRV_NIL;
     
     if (desc->inet.active == INET_PASSIVE) {
         /* {inet_async,S,Ref,{ok,{http_response,Version,Status,Phrase}}} */
@@ -2043,7 +2041,7 @@ http_request_inetdrv(void* arg, const http_atom_t* meth, const char* meth_ptr,
     tcp_descriptor* desc = (tcp_descriptor*) arg;
     int i = 0;
     ErlDrvTermData spec[43];
-    ErlDrvTermData caller;
+    ErlDrvTermData caller = ERL_DRV_NIL;
     
     if (desc->inet.active == INET_PASSIVE) {
         /* {inet_async, S, Ref, {ok,{http_request,Meth,Uri,Version}}} */
@@ -2094,7 +2092,7 @@ http_header_inetdrv(void* arg, const http_atom_t* name, const char* name_ptr,
     tcp_descriptor* desc = (tcp_descriptor*) arg;
     int i = 0;
     ErlDrvTermData spec[26];
-    ErlDrvTermData caller;
+    ErlDrvTermData caller = ERL_DRV_NIL;
     
     if (desc->inet.active == INET_PASSIVE) {
         /* {inet_async,S,Ref,{ok,{http_header,Bit,Name,IValue,Value}} */
@@ -2223,7 +2221,7 @@ int ssl_tls_inetdrv(void* arg, unsigned type, unsigned major, unsigned minor,
     tcp_descriptor* desc = (tcp_descriptor*) arg;
     int i = 0;
     ErlDrvTermData spec[28];
-    ErlDrvTermData caller;
+    ErlDrvTermData caller = ERL_DRV_NIL;
     ErlDrvBinary* bin;
     int ret;
 
@@ -4945,39 +4943,45 @@ static int inet_ctl_getifaddrs(inet_descriptor* desc_p,
 	*buf_p++ = '\0';
 	*buf_p++ = INET_IFOPT_FLAGS;
 	put_int32(IFGET_FLAGS(ifa_p->ifa_flags), buf_p); buf_p += 4;
-	if (ifa_p->ifa_addr->sa_family == AF_INET
+	if (ifa_p->ifa_addr) {
+	    if (ifa_p->ifa_addr->sa_family == AF_INET
 #if defined(AF_INET6)
-	    || ifa_p->ifa_addr->sa_family == AF_INET6
+		|| ifa_p->ifa_addr->sa_family == AF_INET6
 #endif
-	    ) {
-	    SOCKADDR_TO_BUF(INET_IFOPT_ADDR, ifa_p->ifa_addr);
-	    BUF_ENSURE(1);
-	    SOCKADDR_TO_BUF(INET_IFOPT_NETMASK, ifa_p->ifa_netmask);
-	    if (ifa_p->ifa_flags & IFF_POINTOPOINT) {
-		BUF_ENSURE(1);
-		SOCKADDR_TO_BUF(INET_IFOPT_DSTADDR, ifa_p->ifa_dstaddr);
-	    } else if (ifa_p->ifa_flags & IFF_BROADCAST) {
-		BUF_ENSURE(1);
-		SOCKADDR_TO_BUF(INET_IFOPT_BROADADDR, ifa_p->ifa_broadaddr);
+		) {
+		SOCKADDR_TO_BUF(INET_IFOPT_ADDR, ifa_p->ifa_addr);
+		if (ifa_p->ifa_netmask) {
+		    BUF_ENSURE(1);
+		    SOCKADDR_TO_BUF(INET_IFOPT_NETMASK, ifa_p->ifa_netmask);
+		}
+		if (ifa_p->ifa_dstaddr &&
+		    (ifa_p->ifa_flags & IFF_POINTOPOINT)) {
+		    BUF_ENSURE(1);
+		    SOCKADDR_TO_BUF(INET_IFOPT_DSTADDR, ifa_p->ifa_dstaddr);
+		} else if (ifa_p->ifa_broadaddr &&
+			   (ifa_p->ifa_flags & IFF_BROADCAST)) {
+		    BUF_ENSURE(1);
+		    SOCKADDR_TO_BUF(INET_IFOPT_BROADADDR, ifa_p->ifa_broadaddr);
+		}
 	    }
-	}
 #if defined(AF_LINK) || defined(AF_PACKET)
-	else if (
+	    else if (
 #if defined(AF_LINK)
-		 ifa_p->ifa_addr->sa_family == AF_LINK
+		     ifa_p->ifa_addr->sa_family == AF_LINK
 #else
-		 0
+		     0
 #endif
 #if defined(AF_PACKET)
-		 || ifa_p->ifa_addr->sa_family == AF_PACKET
+		     || ifa_p->ifa_addr->sa_family == AF_PACKET
 #endif
-		 ) {
-	    char *bp = buf_p;
-	    BUF_ENSURE(1);
-	    SOCKADDR_TO_BUF(INET_IFOPT_HWADDR, ifa_p->ifa_addr);
-	    if (buf_p - bp < 4) buf_p = bp; /* Empty hwaddr */
+		     ) {
+		char *bp = buf_p;
+		BUF_ENSURE(1);
+		SOCKADDR_TO_BUF(INET_IFOPT_HWADDR, ifa_p->ifa_addr);
+		if (buf_p - bp < 4) buf_p = bp; /* Empty hwaddr */
+	    }
+#endif
 	}
-#endif
 	BUF_ENSURE(1);
 	*buf_p++ = '\0';
     }
@@ -5044,9 +5048,17 @@ static STATUS wrap_sockopt(STATUS (*function)() /* Yep, no parameter
 }
 #endif
 
+/* Per H @ Tail-f: The original code here had problems that possibly
+   only occur if you abuse it for non-INET sockets, but anyway:
+   a) If the getsockopt for SO_PRIORITY or IP_TOS failed, the actual
+      requested setsockopt was never even attempted.
+   b) If {get,set}sockopt for one of IP_TOS and SO_PRIORITY failed,
+      but ditto for the other worked and that was actually the requested
+      option, failure was still reported to erlang.                  */
+
 #if  defined(IP_TOS) && defined(SOL_IP) && defined(SO_PRIORITY)
 static int setopt_prio_tos_trick
-	   (int fd, int proto, int type, char* arg_ptr, int arg_sz)
+	(int fd, int proto, int type, char* arg_ptr, int arg_sz, int propagate)
 {
     /* The relations between SO_PRIORITY, TOS and other options
        is not what you (or at least I) would expect...:
@@ -5059,6 +5071,8 @@ static int setopt_prio_tos_trick
     int          tmp_ival_prio;
     int          tmp_ival_tos;
     int          res;
+    int          res_prio;
+    int          res_tos;
 #ifdef HAVE_SOCKLEN_T
 	    socklen_t
 #else
@@ -5067,28 +5081,35 @@ static int setopt_prio_tos_trick
 		tmp_arg_sz_prio = sizeof(tmp_ival_prio),
 		tmp_arg_sz_tos  = sizeof(tmp_ival_tos);
 
-    res = sock_getopt(fd, SOL_SOCKET, SO_PRIORITY,
+    res_prio = sock_getopt(fd, SOL_SOCKET, SO_PRIORITY,
 		      (char *) &tmp_ival_prio, &tmp_arg_sz_prio);
-    if (res == 0) {
-	res = sock_getopt(fd, SOL_IP, IP_TOS, 
+    res_tos = sock_getopt(fd, SOL_IP, IP_TOS, 
 		      (char *) &tmp_ival_tos, &tmp_arg_sz_tos);
-	if (res == 0) {
 	    res = sock_setopt(fd, proto, type, arg_ptr, arg_sz);
 	    if (res == 0) {
 		if (type != SO_PRIORITY) {
-		    if (type != IP_TOS) {
-			res = sock_setopt(fd, 
+	    if (type != IP_TOS && res_tos == 0) {
+		res_tos = sock_setopt(fd, 
 					  SOL_IP, 
 					  IP_TOS,
 					  (char *) &tmp_ival_tos, 
 					  tmp_arg_sz_tos);
+		if (propagate)
+		    res = res_tos;
 		    }
-		    if (res == 0) {
-			res =  sock_setopt(fd, 
+	    if (res == 0 && res_prio == 0) {
+		res_prio = sock_setopt(fd, 
 					   SOL_SOCKET, 
 					   SO_PRIORITY,
 					   (char *) &tmp_ival_prio, 
 					   tmp_arg_sz_prio);
+		if (propagate) {		
+		    /* Some kernels set a SO_PRIORITY by default that you are not permitted to reset,
+		       silently ignore this error condition */
+		    if (res_prio != 0 && sock_errno() == EPERM) {
+			res = 0;
+		    } else {
+			res = res_prio;
 		    }
 		}
 	    }
@@ -5434,7 +5455,7 @@ static int inet_set_opts(inet_descriptor* desc, char* ptr, int len)
 	    return -1;
 	}
 #if  defined(IP_TOS) && defined(SOL_IP) && defined(SO_PRIORITY)
-	res = setopt_prio_tos_trick (desc->s, proto, type, arg_ptr, arg_sz);
+	res = setopt_prio_tos_trick (desc->s, proto, type, arg_ptr, arg_sz, propagate);
 #else
 	res = sock_setopt	    (desc->s, proto, type, arg_ptr, arg_sz);
 #endif
@@ -5964,7 +5985,7 @@ static int sctp_set_opts(inet_descriptor* desc, char* ptr, int len)
 	    return -1;
 	}
 #if  defined(IP_TOS) && defined(SOL_IP) && defined(SO_PRIORITY)
-	res = setopt_prio_tos_trick (desc->s, proto, type, arg_ptr, arg_sz);
+	res = setopt_prio_tos_trick (desc->s, proto, type, arg_ptr, arg_sz, 1);
 #else
 	res = sock_setopt	    (desc->s, proto, type, arg_ptr, arg_sz);
 #endif
@@ -7959,11 +7980,11 @@ static int tcp_inet_ctl(ErlDrvData e, unsigned int cmd, char* buf, int len,
 	timeout = get_int32(buf);
 
 	if (desc->inet.state == TCP_STATE_ACCEPTING) {
-	    unsigned long time_left;
-	    int oid;
-	    ErlDrvTermData ocaller;
-	    int oreq;
-	    unsigned otimeout;
+	    unsigned long time_left = 0;
+	    int oid = 0;
+	    ErlDrvTermData ocaller = ERL_DRV_NIL;
+	    int oreq = 0;
+	    unsigned otimeout = 0;
 	    ErlDrvTermData caller = driver_caller(desc->inet.port);
 	    MultiTimerData *mtd = NULL,*omtd = NULL;
 	    ErlDrvMonitor monitor, omonitor;
@@ -8527,7 +8548,9 @@ static int tcp_deliver(tcp_descriptor* desc, int len)
 	len = 0;
 
 	if (!desc->inet.active) {
-	    driver_cancel_timer(desc->inet.port);
+	    if (!desc->busy_on_send) {
+		driver_cancel_timer(desc->inet.port);
+	    }
 	    sock_select(INETP(desc),(FD_READ|FD_CLOSE),0);
 	    if (desc->i_buf != NULL)
 		tcp_restart_input(desc);

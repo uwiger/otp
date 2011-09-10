@@ -53,7 +53,7 @@ EBIN = .
 
 make_emakefile:
 	$(ERL_TOP)/make/make_emakefile $(ERL_COMPILE_FLAGS) -o$(EBIN) \
-		$(MODULES) >> $(EMAKEFILE)
+		$(MODULES) > $(EMAKEFILE)
 
 tests debug opt: make_emakefile
 	cd $(ERL_TOP)/lib/test_server/src && \
@@ -80,7 +80,7 @@ release_spec: opt
 
 release_tests_spec: make_emakefile
 	$(INSTALL_DIR) $(RELSYSDIR)
-	$(INSTALL_DATA) observer.spec observer.dynspec $(EMAKEFILE) \
+	$(INSTALL_DATA) observer.spec $(EMAKEFILE) \
 		$(COVERFILE) $(ERL_FILES) \
 		$(RELSYSDIR)
 	@tar cf - *_SUITE_data | (cd $(RELSYSDIR); tar xf -)

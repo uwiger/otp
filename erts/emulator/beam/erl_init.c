@@ -100,7 +100,7 @@ int erts_backtrace_depth;	/* How many functions to show in a backtrace
 
 int erts_async_max_threads;  /* number of threads for async support */
 int erts_async_thread_suggested_stack_size;
-erts_smp_atomic_t erts_max_gen_gcs;
+erts_smp_atomic32_t erts_max_gen_gcs;
 
 Eterm erts_error_logger_warnings; /* What to map warning logs to, am_error, 
 				     am_info or am_warning, am_error is 
@@ -250,7 +250,7 @@ erl_init(int ncpu)
 
     erts_init_monitors();
     erts_init_gc();
-    init_time();
+    erts_init_time();
     erts_init_sys_common_misc();
     erts_init_process(ncpu);
     erts_init_scheduling(use_multi_run_queue,
@@ -289,7 +289,7 @@ erl_init(int ncpu)
     erts_delay_trap = erts_export_put(am_erlang, am_delay_trap, 2);
     erts_late_init_process();
 #if HAVE_ERTS_MSEG
-    erts_mseg_late_init(); /* Must be after timer (init_time()) and thread
+    erts_mseg_late_init(); /* Must be after timer (erts_init_time()) and thread
 			      initializations */
 #endif
 #ifdef HIPE
@@ -323,7 +323,7 @@ init_shared_memory(int argc, char **argv)
 #endif
 
     global_gen_gcs = 0;
-    global_max_gen_gcs = erts_smp_atomic_read(&erts_max_gen_gcs);
+    global_max_gen_gcs = (Uint16) erts_smp_atomic32_read(&erts_max_gen_gcs);
     global_gc_flags = erts_default_process_flags;
 
     erts_global_offheap.mso = NULL;
@@ -651,7 +651,7 @@ early_init(int *argc, char **argv) /*
     erts_writing_erl_crash_dump = 0;
 #endif
 
-    erts_smp_atomic_init(&erts_max_gen_gcs, (long)((Uint16) -1));
+    erts_smp_atomic32_init(&erts_max_gen_gcs, (erts_aint32_t) ((Uint16) -1));
 
     erts_pre_init_process();
 #if defined(USE_THREADS) && !defined(ERTS_SMP)
@@ -856,7 +856,7 @@ erl_start(int argc, char **argv)
     envbufsz = sizeof(envbuf);
     if (erts_sys_getenv("ERL_FULLSWEEP_AFTER", envbuf, &envbufsz) == 0) {
 	Uint16 max_gen_gcs = atoi(envbuf);
-	erts_smp_atomic_set(&erts_max_gen_gcs, (long) max_gen_gcs);
+	erts_smp_atomic32_set(&erts_max_gen_gcs, (erts_aint32_t) max_gen_gcs);
     }
 
     envbufsz = sizeof(envbuf);

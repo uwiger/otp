@@ -2,7 +2,7 @@
 
 # %CopyrightBegin%
 # 
-# Copyright Ericsson AB 1999-2009. All Rights Reserved.
+# Copyright Ericsson AB 1999-2011. All Rights Reserved.
 # 
 # The contents of this file are subject to the Erlang Public License,
 # Version 1.1, (the "License"); you may not use this file except in
@@ -52,7 +52,7 @@ book.dvi: book.tex part.tex ref_man.tex snmp.tex snmp_advanced_agent.tex \
 		snmpa_notification_delivery_info_receiver.tex \
 		snmpa_notification_filter.tex \
 		snmpa_supervisor.tex \
-		snmpc.tex snmpm.tex snmpm_conf.tex snmpm_mpd.tex \
+		snmpc.tex snmpc_cmd.tex snmpm.tex snmpm_conf.tex snmpm_mpd.tex \
 		snmpm_network_interface.tex snmpm_network_interface_filter.tex \
 		snmpm_user.tex
 

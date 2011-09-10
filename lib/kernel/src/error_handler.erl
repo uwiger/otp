@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 1996-2010. All Rights Reserved.
+%% Copyright Ericsson AB 1996-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -28,8 +28,11 @@
 -export([undefined_function/3, undefined_lambda/3, stub_function/3,
 	 breakpoint/3]).
 
--spec undefined_function(Module :: atom(), Function :: atom(), Args :: [_]) ->
-	any().
+-spec undefined_function(Module, Function, Args) ->
+	any() when
+      Module :: atom(),
+      Function :: atom(),
+      Args :: list().
 
 undefined_function(Module, Func, Args) ->
     case ensure_loaded(Module) of
@@ -51,8 +54,10 @@ undefined_function(Module, Func, Args) ->
 	    crash(Module, Func, Args)
     end.
 
--spec undefined_lambda(Module :: atom(), Function :: fun(), Args :: [_]) ->
-	any().
+-spec undefined_lambda(Module, Fun, Args) -> term() when
+      Module :: atom(),
+      Fun :: fun(),
+      Args :: list().
 
 undefined_lambda(Module, Fun, Args) ->
     case ensure_loaded(Module) of
@@ -80,8 +85,12 @@ int() -> int.
 %%
 %% Crash providing a beautiful stack backtrace.
 %%
+-spec crash(atom(), [term()]) -> no_return().
+
 crash(Fun, Args) ->
     crash({Fun,Args}).
+
+-spec crash(atom(), atom(), arity()) -> no_return().
 
 crash(M, F, A) ->
     crash({M,F,A}).

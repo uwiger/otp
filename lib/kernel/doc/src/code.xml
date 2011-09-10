@@ -4,7 +4,7 @@
 <erlref>
   <header>
     <copyright>
-      <year>1996</year><year>2009</year>
+      <year>1996</year><year>2011</year>
       <holder>Ericsson AB. All Rights Reserved.</holder>
     </copyright>
     <legalnotice>
@@ -285,6 +285,12 @@
     was correct, but there was some other error (for instance, a non-existing directory
     given to <c>set_path/1</c>.</p>
   </section>
+
+  <datatypes>
+    <datatype>
+      <name name="load_error_rsn"/>
+    </datatype>
+  </datatypes>
 
   <funcs>
     <func>

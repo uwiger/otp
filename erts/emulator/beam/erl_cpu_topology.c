@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 2010. All Rights Reserved.
+ * Copyright Ericsson AB 2010-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -487,7 +487,7 @@ erts_sched_check_cpu_bind_post_suspend(ErtsSchedulerData *esdp)
 
     /* Make sure we check if we should bind to a cpu or not... */
     if (esdp->run_queue->flags & ERTS_RUNQ_FLG_SHARED_RUNQ)
-	erts_smp_atomic_set(&esdp->chk_cpu_bind, 1);
+	erts_smp_atomic32_set(&esdp->chk_cpu_bind, 1);
     else
 	esdp->run_queue->flags |= ERTS_RUNQ_FLG_CHK_CPU_BIND;
 }
@@ -503,7 +503,7 @@ erts_sched_check_cpu_bind(ErtsSchedulerData *esdp)
     erts_cpu_groups_callback_call_t *cgcc;
 #ifdef ERTS_SMP
     if (erts_common_run_queue)
-	erts_smp_atomic_set(&esdp->chk_cpu_bind, 0);
+	erts_smp_atomic32_set(&esdp->chk_cpu_bind, 0);
     else {
 	esdp->run_queue->flags &= ~ERTS_RUNQ_FLG_CHK_CPU_BIND;
     }
@@ -630,13 +630,13 @@ write_schedulers_bind_change(erts_cpu_topology_t *cpudata, int size)
 int
 erts_init_scheduler_bind_type_string(char *how)
 {
-    if (erts_bind_to_cpu(cpuinfo, -1) == -ENOTSUP)
+    if (sys_strcmp(how, "u") == 0)
+	cpu_bind_order = ERTS_CPU_BIND_NONE;
+    else if (erts_bind_to_cpu(cpuinfo, -1) == -ENOTSUP)
 	return ERTS_INIT_SCHED_BIND_TYPE_NOT_SUPPORTED;
-
-    if (!system_cpudata && !user_cpudata)
+    else if (!system_cpudata && !user_cpudata)
 	return ERTS_INIT_SCHED_BIND_TYPE_ERROR_NO_CPU_TOPOLOGY;
-
-    if (sys_strcmp(how, "db") == 0)
+    else if (sys_strcmp(how, "db") == 0)
 	cpu_bind_order = ERTS_CPU_BIND_DEFAULT_BIND;
     else if (sys_strcmp(how, "s") == 0)
 	cpu_bind_order = ERTS_CPU_BIND_SPREAD;
@@ -652,11 +652,8 @@ erts_init_scheduler_bind_type_string(char *how)
 	cpu_bind_order = ERTS_CPU_BIND_NO_NODE_THREAD_SPREAD;
     else if (sys_strcmp(how, "ns") == 0)
 	cpu_bind_order = ERTS_CPU_BIND_NO_SPREAD;
-    else if (sys_strcmp(how, "u") == 0)
-	cpu_bind_order = ERTS_CPU_BIND_NONE;
     else
 	return ERTS_INIT_SCHED_BIND_TYPE_ERROR_NO_BAD_TYPE;
-
     return ERTS_INIT_SCHED_BIND_TYPE_SUCCESS;
 }
 
@@ -724,6 +721,11 @@ erts_bind_schedulers(Process *c_p, Eterm how)
     erts_smp_rwmtx_rwlock(&cpuinfo_rwmtx);
 
     if (erts_bind_to_cpu(cpuinfo, -1) == -ENOTSUP) {
+	if (cpu_bind_order == ERTS_CPU_BIND_NONE
+	    && ERTS_IS_ATOM_STR("unbound", how)) {
+	    res = bound_schedulers_term(ERTS_CPU_BIND_NONE);
+	    goto done;
+	}
 	ERTS_BIF_PREP_ERROR(res, c_p, EXC_NOTSUP);
     }
     else {

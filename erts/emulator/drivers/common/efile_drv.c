@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 1996-2010. All Rights Reserved.
+ * Copyright Ericsson AB 1996-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -385,7 +385,6 @@ struct t_data
 	    ErlDrvBinary *binp;
 	    int           size;
 	    int           offset;
-	    char          name[1];
 	} read_file;
 	struct {
 	    struct t_readdir_buf *first_buf;
@@ -411,7 +410,7 @@ struct t_data
 static void *ef_safe_alloc(Uint s)
 {
     void *p = EF_ALLOC(s);
-    if (!p) erl_exit(1, "efile drv: Can't allocate %d bytes of memory\n", s);
+    if (!p) erl_exit(1, "efile drv: Can't allocate %lu bytes of memory\n", (unsigned long)s);
     return p;
 }
 
@@ -1117,7 +1116,7 @@ static void invoke_read_file(void *data)
 	Sint64 size;
 	
 	if (! (d->result_ok = 
-	       efile_openfile(&d->errInfo, d->c.read_file.name, 
+	       efile_openfile(&d->errInfo, d->b, 
 			      EFILE_MODE_READ, &fd, &size))) {
 	    goto done;
 	}
@@ -3071,7 +3070,7 @@ file_outputv(ErlDrvData e, ErlIOVec *ev) {
 	d->command = command;
 	d->reply = !0;
 	/* Copy name */
-	FILENAME_COPY(d->c.read_file.name, filename);
+	FILENAME_COPY(d->b, filename);
 	d->c.read_file.binp = NULL;
 	d->invoke = invoke_read_file;
 	d->free = free_read_file;

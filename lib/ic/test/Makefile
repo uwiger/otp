@@ -1,7 +1,7 @@
 #
 # %CopyrightBegin%
 # 
-# Copyright Ericsson AB 1998-2010. All Rights Reserved.
+# Copyright Ericsson AB 1998-2011. All Rights Reserved.
 # 
 # The contents of this file are subject to the Erlang Public License,
 # Version 1.1, (the "License"); you may not use this file except in
@@ -33,7 +33,7 @@ RELSYSDIR = $(RELEASE_PATH)/ic_test
 # ----------------------------------------------------
 # Target Specs
 # ----------------------------------------------------
-TEST_SPEC_FILE = ic.spec ic.spec.vxworks
+TEST_SPEC_FILE = ic.spec
 
 
 IDL_FILES = 
@@ -251,7 +251,7 @@ release_tests_spec: tests
 	$(INSTALL_DIR) $(RELSYSDIR)/erl_client_c_server_SUITE_data
 	$(INSTALL_DIR) $(RELSYSDIR)/erl_client_c_server_proto_SUITE_data
 	$(INSTALL_DIR) $(RELSYSDIR)/java_client_erl_server_SUITE_data
-	$(INSTALL_DATA) $(IDL_FILES)  $(TEST_SPEC_FILE) $(ERL_FILES) \
+	$(INSTALL_DATA) $(IDL_FILES)  ic.cover $(TEST_SPEC_FILE) $(ERL_FILES) \
 		$(RELSYSDIR)
 	$(INSTALL_DATA) $(COMPILER_TEST_FILES) $(RELSYSDIR)/ic_SUITE_data
 	$(INSTALL_DATA) $(COMPILER_TEST_FILES2) \

@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  * 
- * Copyright Ericsson AB 2006-2010. All Rights Reserved.
+ * Copyright Ericsson AB 2006-2011. All Rights Reserved.
  * 
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -146,7 +146,7 @@ BIF_RETTYPE erl_ddll_try_load_3(Process *p, Eterm path_term,
 				Eterm name_term, Eterm options)
 {
     char *path = NULL;
-    int path_len;
+    Uint path_len;
     char *name = NULL;
     DE_Handle *dh;
     erts_driver_t *drv;
@@ -221,9 +221,7 @@ BIF_RETTYPE erl_ddll_try_load_3(Process *p, Eterm path_term,
 	goto error;
     }
 
-    path_len = io_list_len(path_term);
-
-    if (path_len <= 0) {
+    if (erts_iolist_size(path_term, &path_len)) {
 	goto error;
     }
     path = erts_alloc(ERTS_ALC_T_DDLL_TMP_BUF, path_len + 1 /* might need path separator */ + sys_strlen(name) + 1);
@@ -1193,7 +1191,7 @@ int erts_ddll_driver_ok(DE_Handle *dh)
 static void ddll_no_more_references(void *vdh)
 {
     DE_Handle *dh = (DE_Handle *) vdh;
-    int x;
+    erts_aint_t x;
 
     lock_drv_list();
 
@@ -1604,7 +1602,7 @@ static int do_load_driver_entry(DE_Handle *dh, char *path, char *name)
 	erts_sys_ddll_close(dh->handle);
 	return ERL_DE_LOAD_ERROR_BAD_NAME;
     }
-    erts_smp_atomic_init(&(dh->refc), (long) 0);
+    erts_smp_atomic_init(&(dh->refc), (erts_aint_t) 0);
     dh->port_count = 0;
     dh->full_path = erts_alloc(ERTS_ALC_T_DDLL_HANDLE, sys_strlen(path) + 1);
     sys_strcpy(dh->full_path, path);
@@ -1672,7 +1670,7 @@ static int load_driver_entry(DE_Handle **dhp, char *path, char *name)
     dh->handle = NULL;
     dh->procs = NULL;
     dh->port_count = 0;
-    erts_refc_init(&(dh->refc), (long) 0);
+    erts_refc_init(&(dh->refc), (erts_aint_t) 0);
     dh->status = -1;
     dh->reload_full_path = NULL;
     dh->reload_driver_name = NULL;
@@ -1878,7 +1876,7 @@ static Eterm mkatom(char *str)
 static char *pick_list_or_atom(Eterm name_term)
 { 
     char *name = NULL;
-    int name_len;
+    Uint name_len;
     if (is_atom(name_term)) {
 	Atom *ap = atom_tab(atom_val(name_term));
 	if (ap->len == 0) {
@@ -1890,8 +1888,7 @@ static char *pick_list_or_atom(Eterm name_term)
 	memcpy(name,ap->name,ap->len);
 	name[ap->len] = '\0';
     } else {
-	name_len = io_list_len(name_term);
-	if (name_len <= 0) {
+	if (erts_iolist_size(name_term, &name_len)) {
 	    goto error;
 	}
 	name = erts_alloc(ERTS_ALC_T_DDLL_TMP_BUF, name_len + 1);

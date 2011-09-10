@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  * 
- * Copyright Ericsson AB 2005-2009. All Rights Reserved.
+ * Copyright Ericsson AB 2005-2011. All Rights Reserved.
  * 
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -39,7 +39,7 @@ typedef struct {
     int inited;
     Sint16 id;
     Uint16 flags;
-    Eterm extra;
+    UWord extra;
 } erts_lc_lock_t;
 
 #define ERTS_LC_INITITALIZED 0x7f7f7f7f

@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 1996-2010. All Rights Reserved.
+ * Copyright Ericsson AB 1996-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -1558,7 +1558,7 @@ Eterm erts_sint64_to_big(Sint64 x, Eterm **hpp)
 ** Convert a bignum to a double float
 */
 int
-big_to_double(Eterm x, double* resp)
+big_to_double(Wterm x, double* resp)
 {
     double d = 0.0;
     Eterm* xp = big_val(x);
@@ -1588,7 +1588,7 @@ big_to_double(Eterm x, double* resp)
 /*
  ** Estimate the number of decimal digits (include sign)
  */
-int big_decimal_estimate(Eterm x)
+int big_decimal_estimate(Wterm x)
 {
     Eterm* xp = big_val(x);
     int lg = I_lg(BIG_V(xp), BIG_SIZE(xp));
@@ -1602,7 +1602,7 @@ int big_decimal_estimate(Eterm x)
 ** Convert a bignum into a string of decimal numbers
 */
 
-static void write_big(Eterm x, void (*write_func)(void *, char), void *arg)
+static void write_big(Wterm x, void (*write_func)(void *, char), void *arg)
 {
     Eterm* xp = big_val(x);
     ErtsDigit* dx = BIG_V(xp);
@@ -1681,7 +1681,7 @@ write_string(void *arg, char c)
     *(--(*((char **) arg))) = c;
 }
 
-char *erts_big_to_string(Eterm x, char *buf, Uint buf_sz)
+char *erts_big_to_string(Wterm x, char *buf, Uint buf_sz)
 {
     char *big_str = buf + buf_sz - 1;
     *big_str = '\0';
@@ -1725,7 +1725,7 @@ static Eterm big_norm(Eterm *x, dsize_t xl, short sign)
 /*
 ** Compare bignums
 */
-int big_comp(Eterm x, Eterm y)
+int big_comp(Wterm x, Wterm y)
 {
     Eterm* xp = big_val(x);
     Eterm* yp = big_val(y);
@@ -2060,7 +2060,7 @@ static Eterm B_plus_minus(ErtsDigit *x, dsize_t xl, short xsgn,
 /*
 ** Add bignums
 */
-Eterm big_plus(Eterm x, Eterm y, Eterm *r)
+Eterm big_plus(Wterm x, Wterm y, Eterm *r)
 {
     Eterm* xp = big_val(x);
     Eterm* yp = big_val(y);

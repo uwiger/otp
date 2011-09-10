@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 2005-2010. All Rights Reserved.
+ * Copyright Ericsson AB 2005-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -155,7 +155,7 @@ static erts_lc_lock_order_t erts_lock_order[] = {
     {	"alcu_allocator",			"index"			},
     {	"alcu_delayed_free",			"index"			},
     {	"mseg",					NULL			},
-#ifdef HALFWORD_HEAP
+#if HALFWORD_HEAP
     {	"pmmap",				NULL			},
 #endif
 #ifdef ERTS_SMP
@@ -177,6 +177,8 @@ static erts_lc_lock_order_t erts_lock_order[] = {
     {	"async_id",				NULL			},
     {	"pix_lock",				"address"		},
     {	"run_queues_lists",			NULL			},
+    {	"misc_aux_work_queue",			"index"			},
+    {	"misc_aux_work_pre_alloc_lock",		"address"		},
     {	"sched_stat",				NULL			},
     {	"run_queue_sleep_list",			"address"		},
 #endif
@@ -238,7 +240,7 @@ typedef struct erts_lc_locked_lock_t_ erts_lc_locked_lock_t;
 struct erts_lc_locked_lock_t_ {
     erts_lc_locked_lock_t *next;
     erts_lc_locked_lock_t *prev;
-    Eterm extra;
+    UWord extra;
     Sint16 id;
     Uint16 flags;
 };
@@ -439,12 +441,12 @@ new_locked_lock(erts_lc_lock_t *lck, Uint16 op_flags)
 }
 
 static void
-print_lock2(char *prefix, Sint16 id, Eterm extra, Uint16 flags, char *suffix)
+print_lock2(char *prefix, Sint16 id, Wterm extra, Uint16 flags, char *suffix)
 {
     char *lname = (0 <= id && id < ERTS_LOCK_ORDER_SIZE
 		   ? erts_lock_order[id].name
 		   : "unknown");
-    if (is_boxed(extra))
+    if (is_not_immed(extra))
 	erts_fprintf(stderr,
 		     "%s'%s:%p%s'%s%s",
 		     prefix,
@@ -978,10 +980,10 @@ erts_lc_trylock_force_busy_flg(erts_lc_lock_t *lck, Uint16 op_flags)
 	/* We only force busy if a lock order violation would occur
 	   and when on an even millisecond. */
 	{
-	    erts_thr_timeval_t time;
-	    erts_thr_time_now(&time);
+	    SysTimeval tv;
+	    sys_gettimeofday(&tv);
 
-	    if ((time.tv_nsec / 1000000) & 1)
+	    if ((tv.tv_usec / 1000) & 1)
 		return 0;
 	}
 #endif
@@ -1258,7 +1260,8 @@ erts_lc_init_lock(erts_lc_lock_t *lck, char *name, Uint16 flags)
 {
     lck->id = erts_lc_get_lock_order_id(name);
 
-    lck->extra = make_boxed(&lck->extra);
+    lck->extra = &lck->extra;
+    ASSERT(is_not_immed(lck->extra));
     lck->flags = flags;
     lck->inited = ERTS_LC_INITITALIZED;
 }
@@ -1268,6 +1271,7 @@ erts_lc_init_lock_x(erts_lc_lock_t *lck, char *name, Uint16 flags, Eterm extra)
 {
     lck->id = erts_lc_get_lock_order_id(name);
     lck->extra = extra;
+    ASSERT(is_immed(lck->extra));
     lck->flags = flags;
     lck->inited = ERTS_LC_INITITALIZED;
 }

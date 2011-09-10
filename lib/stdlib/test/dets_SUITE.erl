@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 1996-2010. All Rights Reserved.
+%% Copyright Ericsson AB 1996-2011. All Rights Reserved.
 %% 
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -28,13 +28,15 @@
 -define(privdir(_), "./dets_SUITE_priv").
 -define(datadir(_), "./dets_SUITE_data").
 -else.
--include("test_server.hrl").
+-include_lib("test_server/include/test_server.hrl").
 -define(format(S, A), ok).
 -define(privdir(Conf), ?config(priv_dir, Conf)).
 -define(datadir(Conf), ?config(data_dir, Conf)).
 -endif.
 
--export([all/1, not_run/1, newly_started/1, basic_v8/1, basic_v9/1,
+-export([all/0, suite/0,groups/0,init_per_suite/1, end_per_suite/1, 
+	 init_per_group/2,end_per_group/2, 
+	 not_run/1, newly_started/1, basic_v8/1, basic_v9/1,
 	 open_v8/1, open_v9/1, sets_v8/1, sets_v9/1, bags_v8/1,
 	 bags_v9/1, duplicate_bags_v8/1, duplicate_bags_v9/1,
 	 access_v8/1, access_v9/1, dirty_mark/1, dirty_mark2/1,
@@ -51,13 +53,13 @@
          simultaneous_open/1, insert_new/1, repair_continuation/1,
          otp_5487/1, otp_6206/1, otp_6359/1, otp_4738/1, otp_7146/1,
          otp_8070/1, otp_8856/1, otp_8898/1, otp_8899/1, otp_8903/1,
-         otp_8923/1]).
+         otp_8923/1, otp_9282/1]).
 
 -export([dets_dirty_loop/0]).
 
 -export([histogram/1, sum_histogram/1, ave_histogram/1]).
 
--export([init_per_testcase/2, fin_per_testcase/2]).
+-export([init_per_testcase/2, end_per_testcase/2]).
 
 %% Internal export.
 -export([client/2]).
@@ -83,35 +85,50 @@ init_per_testcase(_Case, Config) ->
     Dog=?t:timetrap(?t:minutes(15)),
     [{watchdog, Dog}|Config].
 
-fin_per_testcase(_Case, _Config) ->
+end_per_testcase(_Case, _Config) ->
     Dog=?config(watchdog, _Config),
     test_server:timetrap_cancel(Dog),
     ok.
 
-all(suite) ->
+suite() -> [{ct_hooks,[ts_install_cth]}].
+
+all() -> 
     case os:type() of
-	vxworks ->
-	    [not_run];
+	vxworks -> [not_run];
 	_ ->
-	    {req,[stdlib],
-	     [basic_v8, basic_v9, open_v8, open_v9, sets_v8, sets_v9,
-	      bags_v8, bags_v9, duplicate_bags_v8, duplicate_bags_v9,
-	      newly_started, open_file_v8, open_file_v9,
-	      init_table_v8, init_table_v9, repair_v8, repair_v9,
-	      access_v8, access_v9, oldbugs_v8, oldbugs_v9,
-	      unsafe_assumptions, truncated_segment_array_v8,
-	      truncated_segment_array_v9, dirty_mark, dirty_mark2,
-	      bag_next_v8, bag_next_v9, hash_v8b_v8c, phash, fold_v8,
-	      fold_v9, fixtable_v8, fixtable_v9, match_v8, match_v9,
-	      select_v8, select_v9, update_counter, badarg,
-	      cache_sets_v8, cache_sets_v9, cache_bags_v8,
-	      cache_bags_v9, cache_duplicate_bags_v8,
-	      cache_duplicate_bags_v9, otp_4208, otp_4989, many_clients,
-              otp_4906, otp_5402, simultaneous_open, insert_new, 
-              repair_continuation, otp_5487, otp_6206, otp_6359, otp_4738,
-              otp_7146, otp_8070, otp_8856, otp_8898, otp_8899, otp_8903,
-              otp_8923]}
+	    [basic_v8, basic_v9, open_v8, open_v9, sets_v8, sets_v9,
+	     bags_v8, bags_v9, duplicate_bags_v8, duplicate_bags_v9,
+	     newly_started, open_file_v8, open_file_v9,
+	     init_table_v8, init_table_v9, repair_v8, repair_v9,
+	     access_v8, access_v9, oldbugs_v8, oldbugs_v9,
+	     unsafe_assumptions, truncated_segment_array_v8,
+	     truncated_segment_array_v9, dirty_mark, dirty_mark2,
+	     bag_next_v8, bag_next_v9, hash_v8b_v8c, phash, fold_v8,
+	     fold_v9, fixtable_v8, fixtable_v9, match_v8, match_v9,
+	     select_v8, select_v9, update_counter, badarg,
+	     cache_sets_v8, cache_sets_v9, cache_bags_v8,
+	     cache_bags_v9, cache_duplicate_bags_v8,
+	     cache_duplicate_bags_v9, otp_4208, otp_4989,
+	     many_clients, otp_4906, otp_5402, simultaneous_open,
+	     insert_new, repair_continuation, otp_5487, otp_6206,
+	     otp_6359, otp_4738, otp_7146, otp_8070, otp_8856, otp_8898,
+	     otp_8899, otp_8903, otp_8923, otp_9282]
     end.
+
+groups() -> 
+    [].
+
+init_per_suite(Config) ->
+    Config.
+
+end_per_suite(_Config) ->
+    ok.
+
+init_per_group(_GroupName, Config) ->
+    Config.
+
+end_per_group(_GroupName, Config) ->
+    Config.
 
 not_run(suite) -> [];
 not_run(Conf) when is_list(Conf) ->
@@ -3839,6 +3856,28 @@ otp_8923(Config) when is_list(Config) ->
 
     file:delete(File),
     ok.
+
+otp_9282(doc) ->
+    ["OTP-9282. The name of a table can be an arbitrary term"];
+otp_9282(suite) ->
+    [];
+otp_9282(Config) when is_list(Config) ->
+    some_calls(make_ref(), Config),
+    some_calls({a,typical,name}, Config),
+    some_calls(fun() -> a_funny_name end, Config),
+    ok.
+
+some_calls(Tab, Config) ->
+    File = filename(ref, Config),
+    ?line {ok,T} = dets:open_file(Tab, [{file,File}]),
+    ?line T = Tab,
+    ?line false = dets:info(T, safe_fixed),
+    ?line File = dets:info(T, filename),
+    ?line ok = dets:insert(Tab, [{3,0}]),
+    ?line [{3,0}] = dets:lookup(Tab, 3),
+    ?line [{3,0}] = dets:traverse(Tab, fun(X) -> {continue, X} end),
+    ?line ok = dets:close(T),
+    file:delete(File).
 
 %%
 %% Parts common to several test cases

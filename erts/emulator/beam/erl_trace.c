@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 1999-2010. All Rights Reserved.
+ * Copyright Ericsson AB 1999-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -1538,8 +1538,7 @@ erts_call_trace(Process* p, BeamInstr mfa[3], Binary *match_spec,
     Eterm tracee;
 #endif
     Eterm transformed_args[MAX_ARG];
-    DeclareTmpHeap(sub_bin_heap_et,ERL_SUB_BIN_SIZE,p);
-    ErlSubBin *sub_bin_heap = (ErlSubBin *) sub_bin_heap_et;
+    DeclareTypedTmpHeap(ErlSubBin,sub_bin_heap,p);
 
     ASSERT(tracer_pid);
     if (*tracer_pid == am_true) {
@@ -1600,21 +1599,20 @@ erts_call_trace(Process* p, BeamInstr mfa[3], Binary *match_spec,
 	if (is_boxed(arg) && header_is_bin_matchstate(*boxed_val(arg))) {
 	    ErlBinMatchState* ms = (ErlBinMatchState *) boxed_val(arg);
 	    ErlBinMatchBuffer* mb = &ms->mb;
-	    ErlSubBin* sb = sub_bin_heap;
 	    Uint bit_size;
 
 	    ASSERT(sub_bin_heap->thing_word == 0); /* At most one of match context */
 
 	    bit_size = mb->size - mb->offset;
-	    sb->thing_word = HEADER_SUB_BIN;
-	    sb->size = BYTE_OFFSET(bit_size);
-	    sb->bitsize = BIT_OFFSET(bit_size);
-	    sb->offs = BYTE_OFFSET(mb->offset);
-	    sb->bitoffs = BIT_OFFSET(mb->offset);
-	    sb->is_writable = 0;
-	    sb->orig = mb->orig;
+	    sub_bin_heap->thing_word = HEADER_SUB_BIN;
+	    sub_bin_heap->size = BYTE_OFFSET(bit_size);
+	    sub_bin_heap->bitsize = BIT_OFFSET(bit_size);
+	    sub_bin_heap->offs = BYTE_OFFSET(mb->offset);
+	    sub_bin_heap->bitoffs = BIT_OFFSET(mb->offset);
+	    sub_bin_heap->is_writable = 0;
+	    sub_bin_heap->orig = mb->orig;
 
-	    arg = make_binary(sb);
+	    arg = make_binary(sub_bin_heap);
 	}
 	transformed_args[i] = arg;
     }
@@ -1668,7 +1666,7 @@ erts_call_trace(Process* p, BeamInstr mfa[3], Binary *match_spec,
 	return_flags = 0;
 	if (match_spec) {
 	    pam_result = erts_match_set_run(p, match_spec, args, arity,
-					    &return_flags);
+					    ERTS_PAM_TMP_RESULT, &return_flags);
 	    if (is_non_value(pam_result)) {
 		erts_match_set_release_result(p);
 #if !HEAP_ON_C_STACK
@@ -1815,7 +1813,7 @@ erts_call_trace(Process* p, BeamInstr mfa[3], Binary *match_spec,
 	return_flags = 0;
 	if (match_spec) {
 	    pam_result = erts_match_set_run(p, match_spec, args, arity,
-					    &return_flags);
+					    ERTS_PAM_TMP_RESULT, &return_flags);
 	    if (is_non_value(pam_result)) {
 		erts_match_set_release_result(p);
 		UnUseTmpHeap(ERL_SUB_BIN_SIZE,p);

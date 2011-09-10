@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  * 
- * Copyright Ericsson AB 1997-2009. All Rights Reserved.
+ * Copyright Ericsson AB 1997-2011. All Rights Reserved.
  * 
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -328,12 +328,5 @@ extern int exit_async(void);
 #endif
 
 #define ERTS_EXIT_AFTER_DUMP _exit
-
-#ifdef ERTS_TIMER_THREAD
-struct erts_iwait; /* opaque for clients */
-extern struct erts_iwait *erts_iwait_init(void);
-extern void erts_iwait_wait(struct erts_iwait *iwait, struct timeval *delay);
-extern void erts_iwait_interrupt(struct erts_iwait *iwait);
-#endif /* ERTS_TIMER_THREAD */
 
 #endif /* #ifndef _ERL_UNIX_SYS_H */

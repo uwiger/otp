@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 1999-2010. All Rights Reserved.
+ * Copyright Ericsson AB 1999-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -177,7 +177,6 @@ erts_bs_get_integer_2(Process *p, Uint num_bits, unsigned flags, ErlBinMatchBuff
     byte* LSB;
     byte* MSB;
     Uint* hp;
-    Uint* hp_end;
     Uint words_needed;
     Uint actual;
     Uint v32;
@@ -405,7 +404,6 @@ erts_bs_get_integer_2(Process *p, Uint num_bits, unsigned flags, ErlBinMatchBuff
     default:
 	words_needed = 1+WSIZE(bytes);
 	hp = HeapOnlyAlloc(p, words_needed);
-	hp_end = hp + words_needed;
 	res = bytes_to_big(LSB, bytes, sgn, hp); 
 	if (is_small(res)) {
 	    p->htop = hp;
@@ -425,7 +423,6 @@ Eterm
 erts_bs_get_binary_2(Process *p, Uint num_bits, unsigned flags, ErlBinMatchBuffer* mb)
 {
     ErlSubBin* sb;
-    size_t num_bytes;		/* Number of bytes in binary. */
 
     if (mb->size - mb->offset < num_bits) {	/* Asked for too many bits.  */
 	return THE_NON_VALUE;
@@ -435,7 +432,6 @@ erts_bs_get_binary_2(Process *p, Uint num_bits, unsigned flags, ErlBinMatchBuffe
      * From now on, we can't fail.
      */
 
-    num_bytes = NBYTES(num_bits);
     sb = (ErlSubBin *) HeapOnlyAlloc(p, ERL_SUB_BIN_SIZE);
     
     sb->thing_word = HEADER_SUB_BIN;
@@ -555,10 +551,11 @@ fmt_int(byte *buf, Uint sz, Eterm val, Uint size, Uint flags)
 {
     unsigned long offs;
 
-    ASSERT(size != 0);
     offs = BIT_OFFSET(size);
     if (is_small(val)) {
 	Sint v = signed_val(val);
+
+	ASSERT(size != 0);	  /* Tested by caller */
 	if (flags & BSF_LITTLE) { /* Little endian */
 	    sz--;
 	    COPY_VAL(buf,1,v,sz);
@@ -578,6 +575,9 @@ fmt_int(byte *buf, Uint sz, Eterm val, Uint size, Uint flags)
 	ErtsDigit* dp = big_v(val);
 	int n = MIN(sz,ds);
 
+	if (size == 0) {
+	    return 0;
+	}
 	if (flags & BSF_LITTLE) {
 	    sz -= n;                       /* pad with this amount */
 	    if (sign) {
@@ -729,15 +729,13 @@ erts_new_bs_put_integer(ERL_BITS_PROTO_3(Eterm arg, Uint num_bits, unsigned flag
     Uint b;
     byte *iptr;
 
-    if (num_bits == 0) {
-	return 1;
-    }
-
     bit_offset = BIT_OFFSET(bin_offset);
     if (is_small(arg)) {
 	Uint rbits = 8 - bit_offset;
 
-	if (bit_offset + num_bits <= 8) {
+	if (num_bits == 0) {
+	    return 1;
+	} else if (bit_offset + num_bits <= 8) {
 	    /*
 	     * All bits are in the same byte.
 	     */ 
@@ -1555,7 +1553,6 @@ Uint32
 erts_bs_get_unaligned_uint32(ErlBinMatchBuffer* mb)
 {
     Uint bytes;
-    Uint bits;
     Uint offs;
     byte bigbuf[4];
     byte* LSB;
@@ -1565,7 +1562,6 @@ erts_bs_get_unaligned_uint32(ErlBinMatchBuffer* mb)
     ASSERT(mb->size - mb->offset >= 32);
 
     bytes = 4;
-    bits = 8;
     offs = 0;
 
     LSB = bigbuf;

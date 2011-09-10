@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 1996-2010. All Rights Reserved.
+%% Copyright Ericsson AB 1996-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -96,6 +96,8 @@
 	 exists/1,
 	 fatal/2,
 	 get_node_number/0,
+	 have_majority/2,
+	 have_majority/3,
 	 fix_error/1,
 	 important/2,
 	 incr_counter/1,
@@ -433,7 +435,7 @@ other_val(Var, Other) ->
 	    pr_other(Var, Other)
     end.
 
--spec(pr_other/2 :: (_,_) -> no_return()).
+-spec pr_other(_,_) -> no_return().
 
 pr_other(Var, Other) ->
     Why = 
@@ -699,6 +701,14 @@ proc_info(_) -> false.
 
 get_node_number() ->
     {node(), self()}.
+
+have_majority(Tab, HaveNodes) ->
+    have_majority(Tab, val({Tab, all_nodes}), HaveNodes).
+
+have_majority(_Tab, AllNodes, HaveNodes) ->
+    Missing = AllNodes -- HaveNodes,
+    Present = AllNodes -- Missing,
+    length(Present) > length(Missing).
 
 read_log_files() ->
     [{F, catch file:read_file(F)} || F <- mnesia_log:log_files()].

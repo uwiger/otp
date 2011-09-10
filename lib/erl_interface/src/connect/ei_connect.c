@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 2000-2010. All Rights Reserved.
+ * Copyright Ericsson AB 2000-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -938,7 +938,7 @@ int ei_do_receive_msg(int fd, int staticbuffer_p,
 	return ERL_ERROR;
     }
     x->index = x->buffsz;
-    switch (msg->msgtype) {	/* FIXME are these all? */
+    switch (msg->msgtype) {	/* FIXME does not handle trace tokens and monitors */
     case ERL_SEND:
     case ERL_REG_SEND:
     case ERL_LINK:
@@ -946,7 +946,6 @@ int ei_do_receive_msg(int fd, int staticbuffer_p,
     case ERL_GROUP_LEADER:
     case ERL_EXIT:
     case ERL_EXIT2:
-    case ERL_NODE_LINK:
 	return ERL_MSG;
 	
     default:
@@ -1198,7 +1197,7 @@ static char *hex(char digest[16], char buff[33])
     char *p = buff;
     int i;
     
-    for (i = 0; i < sizeof(digest); ++i) {
+    for (i = 0; i < 16; ++i) {
 	*p++ = tab[(int)((*d) >> 4)];
 	*p++ = tab[(int)((*d++) & 0xF)];
     }
@@ -1329,6 +1328,7 @@ static int send_name_or_challenge(int fd, char *nodename,
     put8(s, 'n');
     put16be(s, version);
     put32be(s, (DFLAG_EXTENDED_REFERENCES
+		| DFLAG_DIST_MONITOR
 		| DFLAG_EXTENDED_PIDS_PORTS
 		| DFLAG_FUN_TAGS
 		| DFLAG_NEW_FUN_TAGS

@@ -4,7 +4,7 @@
 <erlref>
   <header>
     <copyright>
-      <year>2006</year><year>2010</year>
+      <year>2006</year><year>2011</year>
       <holder>Ericsson AB. All Rights Reserved.</holder>
     </copyright>
     <legalnotice>
@@ -71,7 +71,7 @@
                 [--apps applications] [-o outfile]
 		[--build_plt] [--add_to_plt] [--remove_from_plt]
 		[--check_plt] [--no_check_plt] [--plt_info] [--get_warnings]
-                [--no_native]
+                [--no_native] [--fullpath]
     ]]></code>
     <p>Options:</p>
     <taglist>
@@ -198,10 +198,12 @@
          heuristically performs when dialyzing many files; this avoids the
          compilation time but it may result in (much) longer analysis
          time.</item>
+       <tag><c><![CDATA[--fullpath]]></c></tag>
+       <item>Display the full path names of files for which warnings are emitted.</item>
        <tag><c><![CDATA[--gui]]></c></tag>
        <item>Use the gs-based GUI.</item>
        <tag><c><![CDATA[--wx]]></c></tag>
-       <item>Use the wx-based GUI..</item>
+       <item>Use the wx-based GUI.</item>
     </taglist>
     <note>
       <p>* denotes that multiple occurrences of these options are possible.</p>
@@ -239,7 +241,7 @@
       <item>Include warnings about behaviour callbacks which drift from the
        published recommended interfaces.</item>
       <tag><c><![CDATA[-Wunderspecs]]></c>***</tag>
-      <item>Warn about underspecified functions 
+      <item>Warn about underspecified functions
       (the -spec is strictly more allowing than the success typing).</item>
     </taglist>
     <p>The following options are also available but their use is not
@@ -247,7 +249,7 @@
       debugging)</p>
     <taglist>
       <tag><c><![CDATA[-Woverspecs]]></c>***</tag>
-      <item>Warn about overspecified functions 
+      <item>Warn about overspecified functions
       (the -spec is strictly less allowing than the success typing).</item>
       <tag><c><![CDATA[-Wspecdiffs]]></c>***</tag>
       <item>Warn when the -spec is different than the success typing.</item>
@@ -276,34 +278,34 @@
       <desc>
         <p>Dialyzer GUI version.</p>
         <code type="none"><![CDATA[
-OptList  : [Option]
-Option   : {files,          [Filename : string()]}
-         | {files_rec,      [DirName : string()]}
-         | {defines,        [{Macro: atom(), Value : term()}]}
-         | {from,           src_code | byte_code} %% Defaults to byte_code
-         | {init_plt,       FileName : string()}  %% If changed from default
-         | {plts,           [FileName :: string()]} %% If changed from default
-         | {include_dirs,   [DirName : string()]} 
-         | {output_file,    FileName : string()}
-         | {output_plt,     FileName :: string()}
-         | {analysis_type,  'succ_typings' | 'plt_add' | 'plt_build' | 'plt_check' | 'plt_remove'}
-         | {warnings,       [WarnOpts]}
-         | {get_warnings,   bool()}
+OptList  :: [Option]
+Option   :: {files,          [Filename :: string()]}
+          | {files_rec,      [DirName :: string()]}
+          | {defines,        [{Macro: atom(), Value : term()}]}
+          | {from,           src_code | byte_code} %% Defaults to byte_code
+          | {init_plt,       FileName :: string()}  %% If changed from default
+          | {plts,           [FileName :: string()]} %% If changed from default
+          | {include_dirs,   [DirName :: string()]}
+          | {output_file,    FileName :: string()}
+          | {output_plt,     FileName :: string()}
+          | {analysis_type,  'succ_typings' | 'plt_add' | 'plt_build' | 'plt_check' | 'plt_remove'}
+          | {warnings,       [WarnOpts]}
+          | {get_warnings,   bool()}
 
-WarnOpts : no_return
-         | no_unused
-         | no_improper_lists
-         | no_fun_app
-         | no_match
-         | no_opaque
-         | no_fail_call
-         | error_handling
-         | race_conditions
-         | behaviours
-         | unmatched_returns
-         | overspecs
-         | underspecs
-         | specdiffs
+WarnOpts :: no_return
+          | no_unused
+          | no_improper_lists
+          | no_fun_app
+          | no_match
+          | no_opaque
+          | no_fail_call
+          | error_handling
+          | race_conditions
+          | behaviours
+          | unmatched_returns
+          | overspecs
+          | underspecs
+          | specdiffs
         ]]></code>
       </desc>
     </func>
@@ -318,12 +320,12 @@ WarnOpts : no_return
         <p>Dialyzer command line version.</p>
         <code type="none"><![CDATA[
 Warnings :: [{Tag, Id, Msg}]
-Tag : 'warn_return_no_exit' | 'warn_return_only_exit'
-    | 'warn_not_called' | 'warn_non_proper_list'
-    | 'warn_fun_app' | 'warn_matching'
-    | 'warn_failing_call' | 'warn_contract_types'
-    | 'warn_contract_syntax' | 'warn_contract_not_equal'
-    | 'warn_contract_subtype' | 'warn_contract_supertype'
+Tag :: 'warn_return_no_exit' | 'warn_return_only_exit'
+     | 'warn_not_called' | 'warn_non_proper_list'
+     | 'warn_fun_app' | 'warn_matching'
+     | 'warn_failing_call' | 'warn_contract_types'
+     | 'warn_contract_syntax' | 'warn_contract_not_equal'
+     | 'warn_contract_subtype' | 'warn_contract_supertype'
 Id = {File :: string(), Line :: integer()}
 Msg = msg() -- Undefined
 ]]></code>

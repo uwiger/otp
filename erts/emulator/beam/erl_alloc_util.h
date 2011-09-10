@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 2002-2010. All Rights Reserved.
+ * Copyright Ericsson AB 2002-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -38,6 +38,7 @@ typedef struct {
     int tspec;
     int tpref;
     int ramv;
+    int low_mem;   /* HALFWORD only */
     UWord sbct;
     UWord asbcst;
     UWord rsbcst;
@@ -70,6 +71,7 @@ typedef struct {
     0,			/* (bool)   tspec:  thread specific              */\
     0,			/* (bool)   tpref:  thread preferred             */\
     0,			/* (bool)   ramv:   realloc always moves         */\
+    0,			/* (bool)   low_mem: HALFWORD only               */\
     512*1024,		/* (bytes)  sbct:   sbc threshold                */\
     2*1024*2024,	/* (amount) asbcst: abs sbc shrink threshold     */\
     20,			/* (%)      rsbcst: rel sbc shrink threshold     */\
@@ -97,6 +99,7 @@ typedef struct {
     0,			/* (bool)   tspec:  thread specific              */\
     0,			/* (bool)   tpref:  thread preferred             */\
     0,			/* (bool)   ramv:   realloc always moves         */\
+    0,			/* (bool)   low_mem: HALFWORD only               */\
     64*1024,		/* (bytes)  sbct:   sbc threshold                */\
     2*1024*2024,	/* (amount) asbcst: abs sbc shrink threshold     */\
     20,			/* (%)      rsbcst: rel sbc shrink threshold     */\
@@ -332,6 +335,9 @@ struct Allctr_t_ {
 
 int	erts_alcu_start(Allctr_t *, AllctrInit_t *);
 void	erts_alcu_stop(Allctr_t *);
+
+void	erts_alcu_verify_unused(Allctr_t *);
+void	erts_alcu_verify_unused_ts(Allctr_t *allctr);
 
 unsigned long	erts_alcu_test(unsigned long, unsigned long, unsigned long);
 

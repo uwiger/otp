@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 1999-2010. All Rights Reserved.
+ * Copyright Ericsson AB 1999-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -71,9 +71,9 @@ static char erts_system_version[] = ("Erlang " ERLANG_OTP_RELEASE
 #endif
 #endif
 #ifdef ERTS_SMP
-				     " [smp:%bpu:%bpu]"
+				     " [smp:%beu:%beu]"
 #endif
-				     " [rq:%bpu]"
+				     " [rq:%beu]"
 #ifdef USE_THREADS
 				     " [async-threads:%d]"
 #endif
@@ -1545,7 +1545,7 @@ process_info_aux(Process *BIF_P,
     case am_backtrace: {
 	erts_dsprintf_buf_t *dsbufp = erts_create_tmp_dsbuf(0);
 	erts_stack_dump(ERTS_PRINT_DSBUF, (void *) dsbufp, rp);
-	res = new_binary(BIF_P, (byte *) dsbufp->str, (int) dsbufp->str_len);
+	res = new_binary(BIF_P, (byte *) dsbufp->str, dsbufp->str_len);
 	erts_destroy_tmp_dsbuf(dsbufp);
 	hp = HAlloc(BIF_P, 3);
 	break;
@@ -1723,17 +1723,23 @@ info_1_tuple(Process* BIF_P,	/* Pointer to current process. */
 	} else if (is_list(*tp)) {
 #if defined(PURIFY)
 #define ERTS_ERROR_CHECKER_PRINTF purify_printf
+#define ERTS_ERROR_CHECKER_PRINTF_XML purify_printf
 #elif defined(VALGRIND)
 #define ERTS_ERROR_CHECKER_PRINTF VALGRIND_PRINTF
+#  ifndef HAVE_VALGRIND_PRINTF_XML
+#    define ERTS_ERROR_CHECKER_PRINTF_XML VALGRIND_PRINTF
+#  else
+#    define ERTS_ERROR_CHECKER_PRINTF_XML VALGRIND_PRINTF_XML
+#  endif
 #endif
-	    int buf_size = 8*1024; /* Try with 8KB first */
+	    Uint buf_size = 8*1024; /* Try with 8KB first */
 	    char *buf = erts_alloc(ERTS_ALC_T_TMP, buf_size);
 	    int r = io_list_to_buf(*tp, (char*) buf, buf_size - 1);
 	    if (r < 0) {
 		erts_free(ERTS_ALC_T_TMP, (void *) buf);
-		buf_size = io_list_len(*tp);
-		if (buf_size < 0)
+		if (erts_iolist_size(*tp, &buf_size)) {
 		    goto badarg;
+		}
 		buf_size++;
 		buf = erts_alloc(ERTS_ALC_T_TMP, buf_size);
 		r = io_list_to_buf(*tp, (char*) buf, buf_size - 1);
@@ -1741,8 +1747,8 @@ info_1_tuple(Process* BIF_P,	/* Pointer to current process. */
 	    }
 	    buf[buf_size - 1 - r] = '\0';
 	    if (check_if_xml()) {
-		ERTS_ERROR_CHECKER_PRINTF("<erlang_info_log>"
-					  "%s</erlang_info_log>\n", buf);
+		ERTS_ERROR_CHECKER_PRINTF_XML("<erlang_info_log>"
+					      "%s</erlang_info_log>\n", buf);
 	    } else {
 		ERTS_ERROR_CHECKER_PRINTF("%s\n", buf);
 	    }
@@ -2020,7 +2026,7 @@ BIF_RETTYPE system_info_1(BIF_ALIST_1)
 	res = TUPLE2(hp, am_sequential_tracer, val);
 	BIF_RET(res);
     } else if (BIF_ARG_1 == am_garbage_collection){
-	Uint val = (Uint) erts_smp_atomic_read(&erts_max_gen_gcs);
+	Uint val = (Uint) erts_smp_atomic32_read(&erts_max_gen_gcs);
 	Eterm tup;
 	hp = HAlloc(BIF_P, 3+2 + 3+2 + 3+2);
 
@@ -2035,7 +2041,7 @@ BIF_RETTYPE system_info_1(BIF_ALIST_1)
 
 	BIF_RET(res);
     } else if (BIF_ARG_1 == am_fullsweep_after){
-	Uint val = (Uint) erts_smp_atomic_read(&erts_max_gen_gcs);
+	Uint val = (Uint) erts_smp_atomic32_read(&erts_max_gen_gcs);
 	hp = HAlloc(BIF_P, 3);
 	res = TUPLE2(hp, am_fullsweep_after, make_small(val));
 	BIF_RET(res);
@@ -2074,7 +2080,7 @@ BIF_RETTYPE system_info_1(BIF_ALIST_1)
 	erts_smp_proc_lock(BIF_P, ERTS_PROC_LOCK_MAIN);
 
 	ASSERT(dsbufp && dsbufp->str);
-	res = new_binary(BIF_P, (byte *) dsbufp->str, (int) dsbufp->str_len);
+	res = new_binary(BIF_P, (byte *) dsbufp->str, dsbufp->str_len);
 	erts_destroy_info_dsbuf(dsbufp);
 	BIF_RET(res);
     } else if (ERTS_IS_ATOM_STR("dist_ctrl", BIF_ARG_1)) {
@@ -3430,8 +3436,8 @@ BIF_RETTYPE erts_debug_set_internal_state_2(BIF_ALIST_2)
      */
     if (ERTS_IS_ATOM_STR("available_internal_state", BIF_ARG_1)
 	&& (BIF_ARG_2 == am_true || BIF_ARG_2 == am_false)) {
-	long on = (long) (BIF_ARG_2 == am_true);
-	long prev_on = erts_smp_atomic_xchg(&available_internal_state, on);
+	erts_aint_t on = (erts_aint_t) (BIF_ARG_2 == am_true);
+	erts_aint_t prev_on = erts_smp_atomic_xchg(&available_internal_state, on);
 	if (on) {
 	    erts_dsprintf_buf_t *dsbufp = erts_create_logger_dsbuf();
 	    erts_dsprintf(dsbufp, "Process %T ", BIF_P->id);
@@ -3628,7 +3634,7 @@ BIF_RETTYPE erts_debug_set_internal_state_2(BIF_ALIST_2)
 	}
 	else if (ERTS_IS_ATOM_STR("hipe_test_reschedule_suspend", BIF_ARG_1)) {
 	    /* Used by hipe test suites */
-	    long flag = erts_smp_atomic_read(&hipe_test_reschedule_flag);
+	    erts_aint_t flag = erts_smp_atomic_read(&hipe_test_reschedule_flag);
 	    if (!flag && BIF_ARG_2 != am_false) {
 		erts_smp_atomic_set(&hipe_test_reschedule_flag, 1);
 		erts_suspend(BIF_P, ERTS_PROC_LOCK_MAIN, NULL);
@@ -3703,7 +3709,7 @@ BIF_RETTYPE erts_debug_set_internal_state_2(BIF_ALIST_2)
 
 #ifdef ERTS_ENABLE_LOCK_COUNT
 static Eterm lcnt_build_lock_stats_term(Eterm **hpp, Uint *szp, erts_lcnt_lock_stats_t *stats, Eterm res) {
-    unsigned long tries = 0, colls = 0;
+    Uint tries = 0, colls = 0;
     unsigned long timer_s = 0, timer_ns = 0, timer_n = 0;
     unsigned int  line = 0;
     
@@ -3716,8 +3722,8 @@ static Eterm lcnt_build_lock_stats_term(Eterm **hpp, Uint *szp, erts_lcnt_lock_s
      * [{{file, line}, {tries, colls, {seconds, nanoseconds, n_blocks}}}]
      */
     
-    tries = (unsigned long) ethr_atomic_read(&stats->tries);
-    colls = (unsigned long) ethr_atomic_read(&stats->colls);
+    tries = (Uint) ethr_atomic_read(&stats->tries);
+    colls = (Uint) ethr_atomic_read(&stats->colls);
    
     line     = stats->line; 
     timer_s  = stats->timer.s;

@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2003-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2003-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -148,7 +148,8 @@ run(TestDirs) ->
 %%%               {auto_compile,Bool} | {multiply_timetraps,M} | {scale_timetraps,Bool} |
 %%%               {repeat,N} | {duration,DurTime} | {until,StopTime} |
 %%%               {force_stop,Bool} | {decrypt,DecryptKeyOrFile} |
-%%%               {refresh_logs,LogDir} | {basic_html,Bool}
+%%%               {refresh_logs,LogDir} | {basic_html,Bool} | 
+%%%               {ct_hooks, CTHs}
 %%%   TestDirs = [string()] | string()
 %%%   Suites = [string()] | string()
 %%%   Cases = [atom()] | atom()
@@ -176,6 +177,9 @@ run(TestDirs) ->
 %%%   DecryptKeyOrFile = {key,DecryptKey} | {file,DecryptFile}
 %%%   DecryptKey = string()
 %%%   DecryptFile = string()
+%%%   CTHs = [CTHModule | {CTHModule, CTHInitArgs}]
+%%%   CTHModule = atom()
+%%%   CTHInitArgs = term()
 %%%   Result = [TestResult] | {error,Reason}
 %%% @doc Run tests as specified by the combination of options in <code>Opts</code>.
 %%% The options are the same as those used with the
@@ -857,6 +861,7 @@ remove_config(Callback, Config) ->
 %%%
 %%% @doc <p>Use this function to set a new timetrap for the running test case.</p>
 timetrap(Time) ->
+    test_server:timetrap_cancel(),
     test_server:timetrap(Time).
 
 %%%-----------------------------------------------------------------

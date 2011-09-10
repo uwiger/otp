@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 1997-2009. All Rights Reserved.
+%% Copyright Ericsson AB 1997-2011. All Rights Reserved.
 %% 
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -19,19 +19,39 @@
 
 -module(exception_SUITE).
 
--export([all/1, badmatch/1, pending_errors/1, nil_arith/1,
+-export([all/0, suite/0,groups/0,init_per_suite/1, end_per_suite/1, 
+	 init_per_group/2,end_per_group/2, 
+	 badmatch/1, pending_errors/1, nil_arith/1,
          stacktrace/1, nested_stacktrace/1, raise/1, gunilla/1, per/1,
 	 exception_with_heap_frag/1]).
 
 -export([bad_guy/2]).
 
--include("test_server.hrl").
+-include_lib("test_server/include/test_server.hrl").
 -import(lists, [foreach/2]).
 
-all(suite) ->
-    [badmatch, pending_errors, nil_arith, 
-     stacktrace, nested_stacktrace, raise, gunilla, per,
+suite() -> [{ct_hooks,[ts_install_cth]}].
+
+all() -> 
+    [badmatch, pending_errors, nil_arith, stacktrace,
+     nested_stacktrace, raise, gunilla, per,
      exception_with_heap_frag].
+
+groups() -> 
+    [].
+
+init_per_suite(Config) ->
+    Config.
+
+end_per_suite(_Config) ->
+    ok.
+
+init_per_group(_GroupName, Config) ->
+    Config.
+
+end_per_group(_GroupName, Config) ->
+    Config.
+
 
 -define(try_match(E),
 	catch ?MODULE:bar(),
@@ -255,7 +275,16 @@ stacktrace(Conf) when is_list(Conf) ->
     ?line [{?MODULE,stacktrace_1,3}|_] = erase(stacktrace1),
     ?line St4 = erase(stacktrace2),
     ?line St4 = erlang:get_stacktrace(),
-    ok.
+
+    try
+	?line stacktrace_2()
+    catch
+	error:{badmatch,_} ->
+	    [{?MODULE,stacktrace_2,0},
+	     {?MODULE,stacktrace,1}|_] =
+		erlang:get_stacktrace(),
+	    ok
+    end.
 
 stacktrace_1(X, C1, Y) ->
     erase(stacktrace1),
@@ -275,6 +304,9 @@ stacktrace_1(X, C1, Y) ->
         put(stacktrace2, erlang:get_stacktrace())
     end.
 
+stacktrace_2() ->
+    ok = erlang:process_info(self(), current_function),
+    ok.
 
 
 nested_stacktrace(Conf) when is_list(Conf) ->

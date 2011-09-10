@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2008-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2008-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -81,14 +81,20 @@ run_server(ListenSocket, Opts) ->
 	no_result_msg ->
 	    ok;
 	Msg ->
-	    test_server:format("Msg: ~p ~n", [Msg]),    
+	    test_server:format("Server Msg: ~p ~n", [Msg]),
 	    Pid ! {self(), Msg}
     end,
-    receive 
+    receive
 	listen ->
 	    run_server(ListenSocket, Opts);
+	{listen, MFA} ->
+	    run_server(ListenSocket, [MFA | proplists:delete(mfa, Opts)]);
 	close ->
-	    ok = rpc:call(Node, ssl, close, [AcceptSocket])
+	    test_server:format("Server closing  ~p ~n", [self()]),
+	    Result = rpc:call(Node, ssl, close, [AcceptSocket], 500),
+	    test_server:format("Result ~p ~n", [Result]);
+	{ssl_closed, _} ->
+	    ok
     end.
 
 %%% To enable to test with s_client -reconnect
@@ -122,12 +128,14 @@ remove_close_msg(ReconnectTimes) ->
 	   remove_close_msg(ReconnectTimes -1)
     end.
 	    
-
 start_client(Args) ->
-    Result = spawn_link(?MODULE, run_client, [Args]),
+    Result = spawn_link(?MODULE, run_client, [lists:delete(return_socket, Args)]),
     receive 
-	connected ->
-	    Result
+	{ connected, Socket } ->
+        case lists:member(return_socket, Args) of
+            true -> { Result, Socket };
+            false -> Result
+        end
     end.
 
 run_client(Opts) ->
@@ -139,7 +147,7 @@ run_client(Opts) ->
     test_server:format("ssl:connect(~p, ~p, ~p)~n", [Host, Port, Options]),
     case rpc:call(Node, ssl, connect, [Host, Port, Options]) of
 	{ok, Socket} ->
-	    Pid ! connected,
+	    Pid ! { connected, Socket },
 	    test_server:format("Client: connected~n", []), 
 	    %% In specail cases we want to know the client port, it will
 	    %% be indicated by sending {port, 0} in options list!
@@ -151,19 +159,30 @@ run_client(Opts) ->
 		no_result_msg ->
 		    ok;
 		Msg ->
+		    test_server:format("Client Msg: ~p ~n", [Msg]),
 		    Pid ! {self(), Msg}
 	    end,
-	    receive 
+	    receive
 		close ->
-		    ok = rpc:call(Node, ssl, close, [Socket])
+		    test_server:format("Client closing~n", []),
+		    rpc:call(Node, ssl, close, [Socket]);
+		{ssl_closed, Socket} ->
+		    ok
 	    end;
 	{error, Reason} ->
-	    test_server:format("Client: connection failed: ~p ~n", [Reason]), 
+	    test_server:format("Client: connection failed: ~p ~n", [Reason]),
 	       Pid ! {self(), {error, Reason}}
     end.
 
 close(Pid) ->
-    Pid ! close.
+    test_server:format("Close ~p ~n", [Pid]),
+    Monitor = erlang:monitor(process, Pid),
+    Pid ! close,
+    receive
+	{'DOWN', Monitor, process, Pid, Reason} ->
+	    erlang:demonitor(Monitor),
+	    test_server:format("Pid: ~p down due to:~p ~n", [Pid, Reason])
+    end.
 
 check_result(Server, ServerMsg, Client, ClientMsg) -> 
     receive 
@@ -208,47 +227,27 @@ check_result(Pid, Msg) ->
 	    test_server:fail(Reason)
     end.
 
-check_result_ignore_renegotiation_reject(Pid, Msg) -> 
-    receive 
-	{Pid,  fail_session_fatal_alert_during_renegotiation} ->
-	    test_server:comment("Server rejected old renegotiation"),
-	    ok;
-	{ssl_error, _, esslconnect} ->
-	    test_server:comment("Server rejected old renegotiation"),
-	    ok;
-	{Pid, Msg} -> 
-	    ok;
-	{Port, {data,Debug}} when is_port(Port) ->
-	    io:format("openssl ~s~n",[Debug]),
-	    check_result(Pid,Msg);
-	Unexpected ->
-	    Reason = {{expected, {Pid, Msg}}, 
-		      {got, Unexpected}},
-	    test_server:fail(Reason)
-    end.
-
-
 wait_for_result(Server, ServerMsg, Client, ClientMsg) -> 
     receive 
 	{Server, ServerMsg} -> 
 	    receive 
 		{Client, ClientMsg} ->
-		    ok;
-		Unexpected ->
-		    Unexpected
+		    ok
+		%% Unexpected ->
+		%%     Unexpected
 	    end;
 	{Client, ClientMsg} -> 
 	    receive 
 		{Server, ServerMsg} ->
-		    ok;
-		Unexpected ->
-		    Unexpected
+		    ok
+		%% Unexpected ->
+		%%     Unexpected
 	    end;
 	{Port, {data,Debug}} when is_port(Port) ->
 	    io:format("openssl ~s~n",[Debug]),
-	    wait_for_result(Server, ServerMsg, Client, ClientMsg);
-	Unexpected ->
-	    Unexpected
+	    wait_for_result(Server, ServerMsg, Client, ClientMsg)
+	%% Unexpected ->
+	%%     Unexpected
     end.
 
 
@@ -258,9 +257,9 @@ wait_for_result(Pid, Msg) ->
 	    ok;
 	{Port, {data,Debug}} when is_port(Port) ->
 	    io:format("openssl ~s~n",[Debug]),
-	    wait_for_result(Pid,Msg);
-	Unexpected ->
-	    Unexpected
+	    wait_for_result(Pid,Msg)
+	%% Unexpected ->
+	%%     Unexpected
     end.
 
 cert_options(Config) ->
@@ -327,8 +326,8 @@ cert_options(Config) ->
 
 make_dsa_cert(Config) ->
     
-    {ServerCaCertFile, ServerCertFile, ServerKeyFile} = make_dsa_cert_files("server", Config),
-    {ClientCaCertFile, ClientCertFile, ClientKeyFile} = make_dsa_cert_files("client", Config),
+    {ServerCaCertFile, ServerCertFile, ServerKeyFile} = make_cert_files("server", Config, dsa, dsa, ""),
+    {ClientCaCertFile, ClientCertFile, ClientKeyFile} = make_cert_files("client", Config, dsa, dsa, ""),
     [{server_dsa_opts, [{ssl_imp, new},{reuseaddr, true}, 
 				 {cacertfile, ServerCaCertFile},
 				 {certfile, ServerCertFile}, {keyfile, ServerKeyFile}]},
@@ -342,21 +341,40 @@ make_dsa_cert(Config) ->
      | Config].
 
 
-    
-make_dsa_cert_files(RoleStr, Config) ->    
-    CaInfo = {CaCert, _} = erl_make_certs:make_cert([{key, dsa}]),
-    {Cert, CertKey} = erl_make_certs:make_cert([{key, dsa}, {issuer, CaInfo}]),
+make_mix_cert(Config) ->
+    {ServerCaCertFile, ServerCertFile, ServerKeyFile} = make_cert_files("server", Config, dsa,
+									rsa, "mix"),
+    {ClientCaCertFile, ClientCertFile, ClientKeyFile} = make_cert_files("client", Config, dsa,
+									rsa, "mix"),
+    [{server_mix_opts, [{ssl_imp, new},{reuseaddr, true},
+				 {cacertfile, ServerCaCertFile},
+				 {certfile, ServerCertFile}, {keyfile, ServerKeyFile}]},
+     {server_mix_verify_opts, [{ssl_imp, new},{reuseaddr, true},
+			       {cacertfile, ClientCaCertFile},
+			       {certfile, ServerCertFile}, {keyfile, ServerKeyFile},
+			       {verify, verify_peer}]},
+     {client_mix_opts, [{ssl_imp, new},{reuseaddr, true},
+			{cacertfile, ClientCaCertFile},
+			{certfile, ClientCertFile}, {keyfile, ClientKeyFile}]}
+     | Config].
+
+make_cert_files(RoleStr, Config, Alg1, Alg2, Prefix) ->
+    Alg1Str = atom_to_list(Alg1),
+    Alg2Str = atom_to_list(Alg2),
+    CaInfo = {CaCert, _} = erl_make_certs:make_cert([{key, Alg1}]),
+    {Cert, CertKey} = erl_make_certs:make_cert([{key, Alg2}, {issuer, CaInfo}]),
     CaCertFile = filename:join([?config(priv_dir, Config), 
-				RoleStr, "dsa_cacerts.pem"]),
+				RoleStr, Prefix ++ Alg1Str ++ "_cacerts.pem"]),
     CertFile = filename:join([?config(priv_dir, Config), 
-			      RoleStr, "dsa_cert.pem"]),
+			      RoleStr, Prefix ++ Alg2Str ++ "_cert.pem"]),
     KeyFile = filename:join([?config(priv_dir, Config), 
-				   RoleStr, "dsa_key.pem"]),
+				   RoleStr, Prefix ++ Alg2Str ++ "_key.pem"]),
     
     der_to_pem(CaCertFile, [{'Certificate', CaCert, not_encrypted}]),
     der_to_pem(CertFile, [{'Certificate', Cert, not_encrypted}]),
     der_to_pem(KeyFile, [CertKey]),
     {CaCertFile, CertFile, KeyFile}.
+
 
 start_upgrade_server(Args) ->
     Result = spawn_link(?MODULE, run_upgrade_server, [Args]),
@@ -395,10 +413,12 @@ run_upgrade_server(Opts) ->
 				end,
 	{Module, Function, Args} = proplists:get_value(mfa, Opts),
 	Msg = rpc:call(Node, Module, Function, [SslAcceptSocket | Args]),
+	test_server:format("Upgrade Server Msg: ~p ~n", [Msg]),
 	Pid ! {self(), Msg},
 	receive
 	    close ->
-		ok = rpc:call(Node, ssl, close, [SslAcceptSocket])
+		test_server:format("Upgrade Server closing~n", []),
+		rpc:call(Node, ssl, close, [SslAcceptSocket])
 	end
     catch error:{badmatch, Error} ->
 	    Pid ! {self(), Error}
@@ -428,10 +448,12 @@ run_upgrade_client(Opts) ->
     test_server:format("apply(~p, ~p, ~p)~n", 
 		       [Module, Function, [SslSocket | Args]]),
     Msg = rpc:call(Node, Module, Function, [SslSocket | Args]),
+    test_server:format("Upgrade Client Msg: ~p ~n", [Msg]),
     Pid ! {self(), Msg},
     receive 
 	close ->
-	    ok = rpc:call(Node, ssl, close, [SslSocket])
+	    test_server:format("Upgrade Client closing~n", []),
+	    rpc:call(Node, ssl, close, [SslSocket])
     end.
 
 start_upgrade_server_error(Args) ->

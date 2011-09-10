@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 1996-2010. All Rights Reserved.
+ * Copyright Ericsson AB 1996-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -37,13 +37,6 @@
 #if defined(ERTS_SMP) && !defined(DISABLE_CHILD_WAITER_THREAD)
 #undef ENABLE_CHILD_WAITER_THREAD
 #define ENABLE_CHILD_WAITER_THREAD 1
-#endif
-
-/* The ERTS_TIMER_TREAD #define must be visible to the
-   erl_${OS}_sys.h #include files: it controls whether
-   certain optional facilities should be defined or not. */
-#if defined(ERTS_SMP) && 0
-#define ERTS_TIMER_THREAD
 #endif
 
 #if defined (__WIN32__)
@@ -232,14 +225,14 @@ int real_printf(const char *fmt, ...);
 #else
 #error Neither 32 nor 64 bit architecture
 #endif
-#ifdef ARCH_64
-#  ifdef HALFWORD_HEAP_EMULATOR
+#if defined(ARCH_64) && defined(HALFWORD_HEAP_EMULATOR)
 #    define HALFWORD_HEAP 1
 #    define HALFWORD_ASSERT 0
-#  else
+#    define ASSERT_HALFWORD(COND) ASSERT(COND)
+#else
 #    define HALFWORD_HEAP 0
 #    define HALFWORD_ASSERT 0
-#  endif
+#    define ASSERT_HALFWORD(COND)
 #endif
 
 #if SIZEOF_VOID_P != SIZEOF_SIZE_T
@@ -338,12 +331,16 @@ typedef unsigned char byte;
     (((size_t) 8) - (((size_t) (X)) & ((size_t) 7)))
 
 #include "erl_lock_check.h"
+
+/* needed by erl_smp.h */
+int erts_send_warning_to_logger_str_nogl(char *);
+
 #include "erl_smp.h"
 
 #ifdef ERTS_WANT_BREAK_HANDLING
 #  ifdef ERTS_SMP
-extern erts_smp_atomic_t erts_break_requested;
-#    define ERTS_BREAK_REQUESTED ((int) erts_smp_atomic_read(&erts_break_requested))
+extern erts_smp_atomic32_t erts_break_requested;
+#    define ERTS_BREAK_REQUESTED ((int) erts_smp_atomic32_read(&erts_break_requested))
 #  else
 extern volatile int erts_break_requested;
 #    define ERTS_BREAK_REQUESTED erts_break_requested
@@ -356,8 +353,8 @@ void erts_do_break_handling(void);
 #    define ERTS_GOT_SIGUSR1 0
 #  else
 #    ifdef ERTS_SMP
-extern erts_smp_atomic_t erts_got_sigusr1;
-#      define ERTS_GOT_SIGUSR1 ((int) erts_smp_atomic_read(&erts_got_sigusr1))
+extern erts_smp_atomic32_t erts_got_sigusr1;
+#      define ERTS_GOT_SIGUSR1 ((int) erts_smp_atomic32_read(&erts_got_sigusr1))
 #    else
 extern volatile int erts_got_sigusr1;
 #      define ERTS_GOT_SIGUSR1 erts_got_sigusr1
@@ -524,7 +521,8 @@ int erts_send_info_to_logger_nogl(erts_dsprintf_buf_t *);
 int erts_send_warning_to_logger_nogl(erts_dsprintf_buf_t *);
 int erts_send_error_to_logger_nogl(erts_dsprintf_buf_t *);
 int erts_send_info_to_logger_str_nogl(char *);
-int erts_send_warning_to_logger_str_nogl(char *);
+/* needed by erl_smp.h (declared above)
+   int erts_send_warning_to_logger_str_nogl(char *); */
 int erts_send_error_to_logger_str_nogl(char *);
 
 typedef struct preload {
@@ -540,8 +538,8 @@ typedef struct preload {
  */
 
 typedef struct _SysDriverOpts {
-    int ifd;			/* Input file descriptor (fd driver). */
-    int ofd;			/* Outputfile descriptor (fd driver). */
+    Uint ifd;			/* Input file descriptor (fd driver). */
+    Uint ofd;			/* Outputfile descriptor (fd driver). */
     int packet_bytes;		/* Number of bytes in packet header. */
     int read_write;		/* Read and write bits. */
     int use_stdio;		/* Use standard I/O: TRUE or FALSE. */
@@ -562,11 +560,7 @@ extern char *erts_default_arg0;
 extern char os_type[];
 
 extern int sys_init_time(void);
-#if defined(ERTS_TIMER_THREAD)
-#define erts_deliver_time()
-#else
 extern void erts_deliver_time(void);
-#endif
 extern void erts_time_remaining(SysTimeval *);
 extern int erts_init_time_sup(void);
 extern void erts_sys_init_float(void);
@@ -728,11 +722,11 @@ typedef enum {
 } erts_activity_error_t;
 
 typedef struct {
-    erts_smp_atomic_t do_block;
+    erts_smp_atomic32_t do_block;
     struct {
-	erts_smp_atomic_t wait;
-	erts_smp_atomic_t gc;
-	erts_smp_atomic_t io;
+	erts_smp_atomic32_t wait;
+	erts_smp_atomic32_t gc;
+	erts_smp_atomic32_t io;
     } in_activity;
 } erts_system_block_state_t;
 
@@ -883,7 +877,7 @@ ERTS_GLB_INLINE int
 erts_smp_pending_system_block(void)
 {
 #ifdef ERTS_SMP
-    return erts_smp_atomic_read(&erts_system_block_state.do_block);
+    return (int) erts_smp_atomic32_read(&erts_system_block_state.do_block);
 #else
     return 0;
 #endif
@@ -919,7 +913,7 @@ erts_smp_set_activity(erts_activity_t old_activity,
     case ERTS_ACTIVITY_UNDEFINED:
 	break;
     case ERTS_ACTIVITY_WAIT:
-	erts_smp_atomic_dec(&erts_system_block_state.in_activity.wait);
+	erts_smp_atomic32_dec(&erts_system_block_state.in_activity.wait);
 	if (locked) {
 	    /* You are not allowed to leave activity waiting
 	     * without supplying the possibility to block
@@ -930,10 +924,10 @@ erts_smp_set_activity(erts_activity_t old_activity,
 	}
 	break;
     case ERTS_ACTIVITY_GC:
-	erts_smp_atomic_dec(&erts_system_block_state.in_activity.gc);
+	erts_smp_atomic32_dec(&erts_system_block_state.in_activity.gc);
 	break;
     case ERTS_ACTIVITY_IO:
-	erts_smp_atomic_dec(&erts_system_block_state.in_activity.io);
+	erts_smp_atomic32_dec(&erts_system_block_state.in_activity.io);
 	break;
     default:
 	erts_set_activity_error(ERTS_ACT_ERR_LEAVE_UNKNOWN_ACTIVITY,
@@ -949,13 +943,13 @@ erts_smp_set_activity(erts_activity_t old_activity,
     case ERTS_ACTIVITY_UNDEFINED:
 	break;
     case ERTS_ACTIVITY_WAIT:
-	erts_smp_atomic_inc(&erts_system_block_state.in_activity.wait);
+	erts_smp_atomic32_inc(&erts_system_block_state.in_activity.wait);
 	break;
     case ERTS_ACTIVITY_GC:
-	erts_smp_atomic_inc(&erts_system_block_state.in_activity.gc);
+	erts_smp_atomic32_inc(&erts_system_block_state.in_activity.gc);
 	break;
     case ERTS_ACTIVITY_IO:
-	erts_smp_atomic_inc(&erts_system_block_state.in_activity.io);
+	erts_smp_atomic32_inc(&erts_system_block_state.in_activity.io);
 	break;
     default:
 	erts_set_activity_error(ERTS_ACT_ERR_ENTER_UNKNOWN_ACTIVITY,
@@ -990,27 +984,31 @@ erts_smp_set_activity(erts_activity_t old_activity,
 
 typedef erts_smp_atomic_t erts_refc_t;
 
-ERTS_GLB_INLINE void erts_refc_init(erts_refc_t *refcp, long val);
-ERTS_GLB_INLINE void erts_refc_inc(erts_refc_t *refcp, long min_val);
-ERTS_GLB_INLINE long erts_refc_inctest(erts_refc_t *refcp, long min_val);
-ERTS_GLB_INLINE void erts_refc_dec(erts_refc_t *refcp, long min_val);
-ERTS_GLB_INLINE long erts_refc_dectest(erts_refc_t *refcp, long min_val);
-ERTS_GLB_INLINE void erts_refc_add(erts_refc_t *refcp, long diff, long min_val);
-ERTS_GLB_INLINE long erts_refc_read(erts_refc_t *refcp, long min_val);
+ERTS_GLB_INLINE void erts_refc_init(erts_refc_t *refcp, erts_aint_t val);
+ERTS_GLB_INLINE void erts_refc_inc(erts_refc_t *refcp, erts_aint_t min_val);
+ERTS_GLB_INLINE erts_aint_t erts_refc_inctest(erts_refc_t *refcp,
+					      erts_aint_t min_val);
+ERTS_GLB_INLINE void erts_refc_dec(erts_refc_t *refcp, erts_aint_t min_val);
+ERTS_GLB_INLINE erts_aint_t erts_refc_dectest(erts_refc_t *refcp,
+					      erts_aint_t min_val);
+ERTS_GLB_INLINE void erts_refc_add(erts_refc_t *refcp, erts_aint_t diff,
+				   erts_aint_t min_val);
+ERTS_GLB_INLINE erts_aint_t erts_refc_read(erts_refc_t *refcp,
+					   erts_aint_t min_val);
 
 #if ERTS_GLB_INLINE_INCL_FUNC_DEF
 
 ERTS_GLB_INLINE void
-erts_refc_init(erts_refc_t *refcp, long val)
+erts_refc_init(erts_refc_t *refcp, erts_aint_t val)
 {
     erts_smp_atomic_init((erts_smp_atomic_t *) refcp, val);
 }
 
 ERTS_GLB_INLINE void
-erts_refc_inc(erts_refc_t *refcp, long min_val)
+erts_refc_inc(erts_refc_t *refcp, erts_aint_t min_val)
 {
 #ifdef ERTS_REFC_DEBUG
-    long val = erts_smp_atomic_inctest((erts_smp_atomic_t *) refcp);
+    erts_aint_t val = erts_smp_atomic_inctest((erts_smp_atomic_t *) refcp);
     if (val < min_val)
 	erl_exit(ERTS_ABORT_EXIT,
 		 "erts_refc_inc(): Bad refc found (refc=%ld < %ld)!\n",
@@ -1020,10 +1018,10 @@ erts_refc_inc(erts_refc_t *refcp, long min_val)
 #endif
 }
 
-ERTS_GLB_INLINE long
-erts_refc_inctest(erts_refc_t *refcp, long min_val)
+ERTS_GLB_INLINE erts_aint_t
+erts_refc_inctest(erts_refc_t *refcp, erts_aint_t min_val)
 {
-    long val = erts_smp_atomic_inctest((erts_smp_atomic_t *) refcp);
+    erts_aint_t val = erts_smp_atomic_inctest((erts_smp_atomic_t *) refcp);
 #ifdef ERTS_REFC_DEBUG
     if (val < min_val)
 	erl_exit(ERTS_ABORT_EXIT,
@@ -1034,10 +1032,10 @@ erts_refc_inctest(erts_refc_t *refcp, long min_val)
 }
 
 ERTS_GLB_INLINE void
-erts_refc_dec(erts_refc_t *refcp, long min_val)
+erts_refc_dec(erts_refc_t *refcp, erts_aint_t min_val)
 {
 #ifdef ERTS_REFC_DEBUG
-    long val = erts_smp_atomic_dectest((erts_smp_atomic_t *) refcp);
+    erts_aint_t val = erts_smp_atomic_dectest((erts_smp_atomic_t *) refcp);
     if (val < min_val)
 	erl_exit(ERTS_ABORT_EXIT,
 		 "erts_refc_dec(): Bad refc found (refc=%ld < %ld)!\n",
@@ -1047,10 +1045,10 @@ erts_refc_dec(erts_refc_t *refcp, long min_val)
 #endif
 }
 
-ERTS_GLB_INLINE long
-erts_refc_dectest(erts_refc_t *refcp, long min_val)
+ERTS_GLB_INLINE erts_aint_t
+erts_refc_dectest(erts_refc_t *refcp, erts_aint_t min_val)
 {
-    long val = erts_smp_atomic_dectest((erts_smp_atomic_t *) refcp);
+    erts_aint_t val = erts_smp_atomic_dectest((erts_smp_atomic_t *) refcp);
 #ifdef ERTS_REFC_DEBUG
     if (val < min_val)
 	erl_exit(ERTS_ABORT_EXIT,
@@ -1061,10 +1059,10 @@ erts_refc_dectest(erts_refc_t *refcp, long min_val)
 }
 
 ERTS_GLB_INLINE void
-erts_refc_add(erts_refc_t *refcp, long diff, long min_val)
+erts_refc_add(erts_refc_t *refcp, erts_aint_t diff, erts_aint_t min_val)
 {
 #ifdef ERTS_REFC_DEBUG
-    long val = erts_smp_atomic_addtest((erts_smp_atomic_t *) refcp, diff);
+    erts_aint_t val = erts_smp_atomic_addtest((erts_smp_atomic_t *) refcp, diff);
     if (val < min_val)
 	erl_exit(ERTS_ABORT_EXIT,
 		 "erts_refc_add(%ld): Bad refc found (refc=%ld < %ld)!\n",
@@ -1074,10 +1072,10 @@ erts_refc_add(erts_refc_t *refcp, long diff, long min_val)
 #endif
 }
 
-ERTS_GLB_INLINE long
-erts_refc_read(erts_refc_t *refcp, long min_val)
+ERTS_GLB_INLINE erts_aint_t
+erts_refc_read(erts_refc_t *refcp, erts_aint_t min_val)
 {
-    long val = erts_smp_atomic_read((erts_smp_atomic_t *) refcp);
+    erts_aint_t val = erts_smp_atomic_read((erts_smp_atomic_t *) refcp);
 #ifdef ERTS_REFC_DEBUG
     if (val < min_val)
 	erl_exit(ERTS_ABORT_EXIT,

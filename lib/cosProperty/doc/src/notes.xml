@@ -4,7 +4,7 @@
 <chapter>
   <header>
     <copyright>
-      <year>2000</year><year>2010</year>
+      <year>2000</year><year>2011</year>
       <holder>Ericsson AB. All Rights Reserved.</holder>
     </copyright>
     <legalnotice>
@@ -22,7 +22,7 @@
     </legalnotice>
 
     <title>cosProperty Release Notes</title>
-    <prepared>Niclas Eklund</prepared>
+    <prepared></prepared>
     <docno></docno>
     <approved></approved>
     <checked></checked>
@@ -32,16 +32,45 @@
   </header>
 
   <section>
-    <title>cosProperty 1.1.12</title>
+    <title>cosProperty 1.1.14</title>
 
     <section>
       <title>Improvements and New Features</title>
       <list type="bulleted">
         <item>
           <p>
-            Test suites published.</p>
+            Removed superfluous usage of shy in the documentation since it can cause problem if
+            a buggy tool is used.</p>
           <p>
-            Own Id: OTP-8543 Aux Id:</p>
+            Own Id: OTP-9319 Aux Id:</p>
+        </item>
+      </list>
+    </section>
+  </section>
+
+  <section>
+    <title>cosProperty 1.1.13</title>
+
+    <section>
+      <title>Improvements and New Features</title>
+      <list type="bulleted">
+        <item>
+          <p>Eliminated Dialyzer warnings when using exit or throw.</p>
+          <p>Own id: OTP-9050 Aux Id:</p>
+        </item>
+      </list>
+    </section>
+  </section>
+
+  <section>
+    <title>cosProperty 1.1.12</title>
+
+    <section>
+      <title>Fixed Bugs and Malfunctions</title>
+      <list type="bulleted">
+        <item>
+          <p>Test suites published.</p>
+          <p>Own id: OTP-8543 Aux Id:</p>
         </item>
       </list>
     </section>

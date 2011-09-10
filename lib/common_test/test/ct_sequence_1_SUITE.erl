@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2009-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2009-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -29,7 +29,7 @@
 
 -compile(export_all).
 
--include_lib("test_server/include/test_server.hrl").
+-include_lib("common_test/include/ct.hrl").
 -include_lib("common_test/include/ct_event.hrl").
 
 -define(eh, ct_test_support_eh).
@@ -56,12 +56,23 @@ init_per_testcase(TestCase, Config) ->
 end_per_testcase(TestCase, Config) ->
     ct_test_support:end_per_testcase(TestCase, Config).
 
-all(suite) ->
-    [subgroup_return_fail,
-     subgroup_init_fail,
+suite() -> [{ct_hooks,[ts_install_cth]}].
+
+all() -> 
+    [subgroup_return_fail, subgroup_init_fail,
      subgroup_after_failed_case,
      case_after_subgroup_return_fail,
      case_after_subgroup_fail_init].
+
+groups() -> 
+    [].
+
+init_per_group(_GroupName, Config) ->
+	Config.
+
+end_per_group(_GroupName, Config) ->
+	Config.
+
 
 %%--------------------------------------------------------------------
 %% TEST CASES
@@ -121,7 +132,8 @@ execute(TestCase, SuiteName, Group, Config) ->
 
     ct_test_support:log_events(TestCase,
 			       reformat(Events, ?eh),
-			       ?config(priv_dir, Config)),
+			       ?config(priv_dir, Config),
+			       Opts),
 
     TestEvents = events_to_check(TestCase),
     ok = ct_test_support:verify_events(TestEvents, Events, Config).

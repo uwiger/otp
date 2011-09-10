@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2008-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2008-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -106,8 +106,6 @@ peer_address(ConnectionHandler) ->
 %% initialize. 
 %%--------------------------------------------------------------------
 init([Role, Manager, Socket, SshOpts]) ->
-    {A,B,C} = erlang:now(),
-    random:seed(A, B, C),
     {NumVsn, StrVsn} = ssh_transport:versions(Role, SshOpts),
     ssh_bits:install_messages(ssh_transport:transport_messages(NumVsn)),
     {Protocol, Callback, CloseTag} = 
@@ -571,7 +569,19 @@ handle_info({CloseTag, _Socket}, _StateName,
 	    #state{transport_close_tag = CloseTag, %%manager = Pid,
 		   ssh_params = #ssh{role = _Role, opts = _Opts}} = State) ->
     %%ok = ssh_connection_manager:delivered(Pid),
-    {stop, normal, State}.
+    {stop, normal, State};
+handle_info(UnexpectedMessage, StateName, #state{ssh_params = SshParams} = State) ->
+    Msg = lists:flatten(io_lib:format(
+           "Unexpected message '~p' received in state '~p'\n"
+           "Role: ~p\n"
+           "Peer: ~p\n"
+           "Local Address: ~p\n", [UnexpectedMessage, StateName,
+               SshParams#ssh.role, SshParams#ssh.peer,
+               proplists:get_value(address, SshParams#ssh.opts)])),
+    error_logger:info_report(Msg),
+    {next_state, StateName, State}.
+
+
 %%--------------------------------------------------------------------
 %% Function: terminate(Reason, StateName, State) -> void()
 %% Description:This function is called by a gen_fsm when it is about
@@ -580,7 +590,9 @@ handle_info({CloseTag, _Socket}, _StateName,
 %% Reason. The return value is ignored.
 %%--------------------------------------------------------------------
 terminate(normal, _, #state{transport_cb = Transport,
-			    socket = Socket}) ->
+			    socket = Socket,
+			    manager = Pid}) ->
+    (catch ssh_userreg:delete_user(Pid)),
     (catch Transport:close(Socket)),
     ok;
 
@@ -812,7 +824,7 @@ handle_disconnect(#ssh_msg_disconnect{} = Msg,
 		  #state{ssh_params = Ssh0, manager = Pid} = State) ->
     {SshPacket, Ssh} = ssh_transport:ssh_packet(Msg, Ssh0),
     try 
- 	send_msg(SshPacket, State),
+	send_msg(SshPacket, State),
  	ssh_connection_manager:event(Pid, Msg)
     catch
 	exit:{noproc, _Reason} ->
@@ -824,6 +836,7 @@ handle_disconnect(#ssh_msg_disconnect{} = Msg,
 				   [Msg, Exit]),
 	    error_logger:info_report(Report)
     end,
+    (catch ssh_userreg:delete_user(Pid)),
     {stop, normal, State#state{ssh_params = Ssh}}.
 
 counterpart_versions(NumVsn, StrVsn, #ssh{role = server} = Ssh) ->

@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 2009-2010. All Rights Reserved.
+ * Copyright Ericsson AB 2009-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -30,9 +30,11 @@
 ** 0.1: R13B03
 ** 1.0: R13B04
 ** 2.0: R14A
+** 2.1: R14B02 "vm_variant"
+** 2.2: R14B03 enif_is_exception
 */
 #define ERL_NIF_MAJOR_VERSION 2
-#define ERL_NIF_MINOR_VERSION 0
+#define ERL_NIF_MINOR_VERSION 2
 
 #include <stdlib.h>
 
@@ -80,8 +82,10 @@ typedef long long ErlNifSInt64;
 #endif
 
 #ifdef HALFWORD_HEAP_EMULATOR
+#  define ERL_NIF_VM_VARIANT "beam.halfword" 
 typedef unsigned int ERL_NIF_TERM;
 #else
+#  define ERL_NIF_VM_VARIANT "beam.vanilla" 
 typedef unsigned long ERL_NIF_TERM;
 #endif
 
@@ -105,7 +109,8 @@ typedef struct enif_entry_t
     int  (*load)   (ErlNifEnv*, void** priv_data, ERL_NIF_TERM load_info);
     int  (*reload) (ErlNifEnv*, void** priv_data, ERL_NIF_TERM load_info);
     int  (*upgrade)(ErlNifEnv*, void** priv_data, void** old_priv_data, ERL_NIF_TERM load_info);
-    void (*unload) (ErlNifEnv*, void* priv_data);    
+    void (*unload) (ErlNifEnv*, void* priv_data);
+    const char* vm_variant;
 }ErlNifEntry;
 
 
@@ -198,6 +203,7 @@ extern TWinDynNifCallbacks WinDynNifCallbacks;
 #define ERL_NIF_INIT(NAME, FUNCS, LOAD, RELOAD, UPGRADE, UNLOAD) \
 ERL_NIF_INIT_PROLOGUE                   \
 ERL_NIF_INIT_GLOB                       \
+ERL_NIF_INIT_DECL(NAME);		\
 ERL_NIF_INIT_DECL(NAME)			\
 {					\
     static ErlNifEntry entry = 		\
@@ -207,7 +213,8 @@ ERL_NIF_INIT_DECL(NAME)			\
 	#NAME,				\
 	sizeof(FUNCS) / sizeof(*FUNCS),	\
 	FUNCS,				\
-	LOAD, RELOAD, UPGRADE, UNLOAD	\
+	LOAD, RELOAD, UPGRADE, UNLOAD,	\
+	ERL_NIF_VM_VARIANT		\
     };                                  \
     ERL_NIF_INIT_BODY;                  \
     return &entry;			\

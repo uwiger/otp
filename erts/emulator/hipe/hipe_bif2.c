@@ -1,22 +1,22 @@
 /*
  * %CopyrightBegin%
  * 
- * Copyright Ericsson AB 2001-2009. All Rights Reserved.
+ * Copyright Ericsson AB 2001-2011. All Rights Reserved.
  * 
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
  * compliance with the License. You should have received a copy of the
  * Erlang Public License along with this software. If not, it can be
  * retrieved online at http://www.erlang.org/.
- * 
+ *
  * Software distributed under the License is distributed on an "AS IS"
  * basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
  * the License for the specific language governing rights and limitations
  * under the License.
- * 
+ *
  * %CopyrightEnd%
  */
-/* $Id$
+/*
  * hipe_bif2.c
  *
  * Miscellaneous add-ons.
@@ -33,18 +33,28 @@
 #include "big.h"
 #include "hipe_debug.h"
 #include "hipe_mode_switch.h"
-#include "hipe_bif0.h" /* hipe_constants_{start,next} */
 #include "hipe_arch.h"
 #include "hipe_stack.h"
 
-BIF_RETTYPE hipe_bifs_show_estack_1(BIF_ALIST_1)
+static void proc_unlock(Process* c_p, Process* rp)
 {
+    ErtsProcLocks locks = ERTS_PROC_LOCKS_ALL;
+    if (rp == c_p) {
+	locks &= ~ERTS_PROC_LOCK_MAIN;
+    }
+    if (rp && locks) {
+	erts_smp_proc_unlock(rp, locks);
+    }
+}
+
+BIF_RETTYPE hipe_bifs_show_estack_1(BIF_ALIST_1)
+{    
     Process *rp = erts_pid2proc(BIF_P, ERTS_PROC_LOCK_MAIN,
 				BIF_ARG_1, ERTS_PROC_LOCKS_ALL);
     if (!rp)
 	BIF_ERROR(BIF_P, BADARG);
     hipe_print_estack(rp);
-    erts_smp_proc_unlock(rp, ERTS_PROC_LOCKS_ALL);
+    proc_unlock(BIF_P, rp);
     BIF_RET(am_true);
 }
 
@@ -55,7 +65,7 @@ BIF_RETTYPE hipe_bifs_show_heap_1(BIF_ALIST_1)
     if (!rp)
 	BIF_ERROR(BIF_P, BADARG);
     hipe_print_heap(rp);
-    erts_smp_proc_unlock(rp, ERTS_PROC_LOCKS_ALL);
+    proc_unlock(BIF_P, rp);
     BIF_RET(am_true);
 }
 
@@ -66,7 +76,7 @@ BIF_RETTYPE hipe_bifs_show_nstack_1(BIF_ALIST_1)
     if (!rp)
 	BIF_ERROR(BIF_P, BADARG);
     hipe_print_nstack(rp);
-    erts_smp_proc_unlock(rp, ERTS_PROC_LOCKS_ALL);
+    proc_unlock(BIF_P, rp);
     BIF_RET(am_true);
 }
 
@@ -82,7 +92,7 @@ BIF_RETTYPE hipe_bifs_show_pcb_1(BIF_ALIST_1)
     if (!rp)
 	BIF_ERROR(BIF_P, BADARG);
     hipe_print_pcb(rp);
-    erts_smp_proc_unlock(rp, ERTS_PROC_LOCKS_ALL);
+    proc_unlock(BIF_P, rp);
     BIF_RET(am_true);
 }
 
@@ -121,18 +131,6 @@ BIF_RETTYPE hipe_bifs_show_term_1(BIF_ALIST_1)
     } while (0);
     erts_printf("%T", obj);
     printf("\r\n");
-    BIF_RET(am_true);
-}
-
-BIF_RETTYPE hipe_bifs_show_literals_0(BIF_ALIST_0)
-{
-    Eterm *p;
-
-    p = hipe_constants_start;
-    for (; p < hipe_constants_next; ++p)
-	printf("0x%0*lx: 0x%0*lx\r\n",
-	       2*(int)sizeof(long), (unsigned long)p,
-	       2*(int)sizeof(long), *p);
     BIF_RET(am_true);
 }
 

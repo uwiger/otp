@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2009-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2009-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -23,7 +23,7 @@
 %% Note: This directive should only be used in test suites.
 -compile(export_all).
 
--include("test_server.hrl").
+-include_lib("test_server/include/test_server.hrl").
 -include("test_server_line.hrl").
 
 -define(TIMEOUT, 120000). % 2 min
@@ -45,8 +45,12 @@
 %% variable, but should NOT alter/remove any existing entries.
 %%--------------------------------------------------------------------
 init_per_suite(Config) ->
-    crypto:start(),
-    Config.
+    case catch crypto:start() of
+	ok ->
+	    Config;
+	_Else ->
+	    {skip,"Could not start crypto!"}
+    end.
 
 %%--------------------------------------------------------------------
 %% Function: end_per_suite(Config) -> _
@@ -100,15 +104,20 @@ end_per_testcase(_TestCase, Config) ->
 %%   Name of a test case.
 %% Description: Returns a list of all test cases in this test suite
 %%--------------------------------------------------------------------
-all(doc) ->
-    ["Test Blowfish functionality"];
+suite() -> [{ct_hooks,[ts_install_cth]}].
 
-all(suite) ->
-    [ecb,
-     cbc,
-     cfb64,
-     ofb64
-    ].
+all() -> 
+[ecb, cbc, cfb64, ofb64].
+
+groups() -> 
+    [].
+
+init_per_group(_GroupName, Config) ->
+	Config.
+
+end_per_group(_GroupName, Config) ->
+	Config.
+
 
 %% Test cases start here.
 %%--------------------------------------------------------------------

@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 1998-2010. All Rights Reserved.
+%% Copyright Ericsson AB 1998-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -17,7 +17,7 @@
 %% %CopyrightEnd%
 %%
 -module(epmd_SUITE).
--include("test_server.hrl").
+-include_lib("test_server/include/test_server.hrl").
 -include_lib("kernel/include/file.hrl").
 
 
@@ -35,7 +35,9 @@
 -record(node_info, {port, node_type, prot, lvsn, hvsn, node_name, extra}).
 
 % Test server specific exports
--export([all/1, init_per_testcase/2, fin_per_testcase/2]).
+-export([all/0, suite/0,groups/0,init_per_suite/1, end_per_suite/1, 
+	 init_per_group/2,end_per_group/2, 
+	 init_per_testcase/2, end_per_testcase/2]).
 
 -export(
    [
@@ -64,7 +66,7 @@
 
     returns_valid_empty_extra/1,
     returns_valid_populated_extra_with_nulls/1,
-    buffer_overrun/1,
+
     buffer_overrun_1/1,
     buffer_overrun_2/1,
     no_nonlocal_register/1,
@@ -101,42 +103,37 @@
 %% all/1
 %%
 
-all(suite) ->
-    [
-     register_name,
-     register_names_1,
-     register_names_2,
-     register_duplicate_name,
-     get_port_nr,
-     slow_get_port_nr,
-     unregister_others_name_1,
-     unregister_others_name_2,
-     register_overflow,
-     name_with_null_inside,
-     name_null_terminated,
-     stupid_names_req,
+suite() -> [{ct_hooks,[ts_install_cth]}].
 
-     no_data,
-     one_byte,
-     two_bytes,
-     partial_packet,
-     zero_length,
-     too_large,
-     alive_req_too_small_1,
-     alive_req_too_small_2,
-     alive_req_too_large,
-
-     returns_valid_empty_extra,
+all() -> 
+    [register_name, register_names_1, register_names_2,
+     register_duplicate_name, get_port_nr, slow_get_port_nr,
+     unregister_others_name_1, unregister_others_name_2,
+     register_overflow, name_with_null_inside,
+     name_null_terminated, stupid_names_req, no_data,
+     one_byte, two_bytes, partial_packet, zero_length,
+     too_large, alive_req_too_small_1, alive_req_too_small_2,
+     alive_req_too_large, returns_valid_empty_extra,
      returns_valid_populated_extra_with_nulls,
+     {group, buffer_overrun}, no_nonlocal_register,
+     no_nonlocal_kill, no_live_killing].
 
-     buffer_overrun,
-     %buffer_overrun_1,
-     %buffer_overrun_2,
+groups() -> 
+    [{buffer_overrun, [],
+      [buffer_overrun_1, buffer_overrun_2]}].
 
-     no_nonlocal_register,
-     no_nonlocal_kill,
-     no_live_killing
-    ].
+init_per_suite(Config) ->
+    Config.
+
+end_per_suite(_Config) ->
+    ok.
+
+init_per_group(_GroupName, Config) ->
+    Config.
+
+end_per_group(_GroupName, Config) ->
+    Config.
+
 
 %%
 %% Run before and after each test case
@@ -147,7 +144,7 @@ init_per_testcase(_Func, Config) ->
     cleanup(),
     [{watchdog, Dog} | Config].
 
-fin_per_testcase(_Func, Config) ->
+end_per_testcase(_Func, Config) ->
     cleanup(),
     Dog = ?config(watchdog, Config),
     catch test_server:timetrap_cancel(Dog),	% We may have canceled already
@@ -725,8 +722,6 @@ returns_valid_populated_extra_with_nulls(Config) when is_list(Config) ->
     ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-buffer_overrun(suite) ->
-    [buffer_overrun_1,buffer_overrun_2].
 
 buffer_overrun_1(suite) ->
     [];
@@ -785,42 +780,43 @@ no_nonlocal_register(suite) ->
 no_nonlocal_register(doc) ->
     ["Ensure that we cannot register throug a nonlocal connection"];
 no_nonlocal_register(Config) when is_list(Config) ->
+    ?line case {os:find_executable("ssh"),ct:get_config(ssh_proxy_host)} of
+	      {SSH,Name} when is_list(Name), is_list(SSH) ->
+		  do_no_nonlocal_register(Config,Name);
+	      {false,_} ->
+		  {skip, "No ssh command found to create proxy"};
+	      _ ->
+		  {skip, "No ssh_proxy_host configured in ts.config"}
+	  end.
+do_no_nonlocal_register(Config,SSHHost) when is_list(Config) ->
     ?line ok = epmdrun(),
-    ?line {ok,Ifs} = inet:getiflist(),
-    ?line Addr0 = [ inet:ifget(I, [addr]) || I <- Ifs ],
-    ?line Addr1 = [ A || {ok,[{addr,A}]} <- Addr0],
-    ?line Addr = lists:filter(fun({127,_,_,_}) ->
-				      false;
-				 (_)  ->
-				      true
-			      end,Addr1),
-    %% Now we should have all non loopback interface addresses,
-    %% none should accept a alive2 registration.
-    ?line Res = lists:map(fun(Ad={A1,A2,A3,A4}) ->
-				  try
-				      Name = "gurka_"++
-				             integer_to_list(A1)++"_"++
-				             integer_to_list(A2)++"_"++
-				             integer_to_list(A3)++"_"++
-				             integer_to_list(A4),
-				      Bname = list_to_binary(Name),
-				      NameS = byte_size(Bname),
-				      ?line Bin= <<$x:8,4747:16,$M:8,0:8,5:16,
-						  5:16,NameS:16,Bname/binary,
-						  0:16>>,
-				      ?line S = size(Bin),
-				      {ok, E} = connect(Ad),
-				      gen_tcp:send(E,[<<S:16>>,Bin]),
-				      closed = recv(E,1),
-				      gen_tcp:close(E),
-				      true
-				  catch
-				      _:_ ->
-					  false
-				  end
-		    end, Addr),
-    erlang:display(Res),
-    ?line true = alltrue(Res),
+    ?line ProxyPort = proxy_port(),
+    ?line ok = ssh_proxy(SSHHost,ProxyPort),
+    Res = try
+	      ?line Name = "gurka_"
+	      %++
+	      %integer_to_list(A1)++"_"++
+	      %integer_to_list(A2)++"_"++
+	      %integer_to_list(A3)++"_"++
+	      %integer_to_list(A4)
+	      ,
+	      ?line Bname = list_to_binary(Name),
+	      ?line NameS = byte_size(Bname),
+	      ?line Bin= <<$x:8,4747:16,$M:8,0:8,5:16,
+			  5:16,NameS:16,Bname/binary,
+			  0:16>>,
+	      ?line S = size(Bin),
+	      ?line {ok, E} = connect("localhost",ProxyPort,passive),
+	      ?line gen_tcp:send(E,[<<S:16>>,Bin]),
+	      ?line closed = recv(E,1),
+	      ?line gen_tcp:close(E),
+	      true
+	  catch
+	      _:_ ->
+		  false
+	  end,
+    %erlang:display(Res),
+    true = Res,
     ok.
 
 no_nonlocal_kill(suite) ->
@@ -828,35 +824,34 @@ no_nonlocal_kill(suite) ->
 no_nonlocal_kill(doc) ->
     ["Ensure that we cannot kill through nonlocal connection"];
 no_nonlocal_kill(Config) when is_list(Config) ->
+    ?line case {os:find_executable("ssh"),ct:get_config(ssh_proxy_host)} of
+	      {SSH,Name} when is_list(Name), is_list(SSH) ->
+		  do_no_nonlocal_kill(Config,Name);
+	      {false,_} ->
+		  {skip, "No ssh command found to create proxy"};
+	      _ ->
+		  {skip, "No ssh_proxy_host configured in ts.config"}
+	  end.
+do_no_nonlocal_kill(Config,SSHHost) when is_list(Config) ->
     ?line ok = epmdrun(),
-    ?line {ok,Ifs} = inet:getiflist(),
-    ?line Addr0 = [ inet:ifget(I, [addr]) || I <- Ifs ],
-    ?line Addr1 = [ A || {ok,[{addr,A}]} <- Addr0],
-    ?line Addr = lists:filter(fun({127,_,_,_}) ->
-				      false;
-				 (_)  ->
-				      true
-			      end,Addr1),
-    %% Now we should have all non loopback interface addresses,
-    %% none should accept a alive2 registration.
-    ?line Res = lists:map(fun(Ad) ->
-				  try
-				      {ok, E} = connect(Ad),
-				      M = [?EPMD_KILL_REQ],
-				      send(E, [size16(M), M]),
-				      closed = recv(E,2),
-				      gen_tcp:close(E),
-				      sleep(?MEDIUM_PAUSE),
-				      {ok, E2} = connect(Ad),
-				      gen_tcp:close(E2),
-				      true
-				  catch
-				      _:_ ->
-					  false
-				  end
-		    end, Addr),
-    erlang:display(Res),
-    ?line true = alltrue(Res),
+    ?line ProxyPort = proxy_port(),
+    ?line ok = ssh_proxy(SSHHost,ProxyPort),
+    Res = try
+	      {ok, E} = connect("localhost",ProxyPort,passive),
+	      M = [?EPMD_KILL_REQ],
+	      send(E, [size16(M), M]),
+	      closed = recv(E,2),
+	      gen_tcp:close(E),
+	      sleep(?MEDIUM_PAUSE),
+	      {ok, E2} = connect("localhost",ProxyPort,passive),
+	      gen_tcp:close(E2),
+	      true
+	  catch
+	      _:_ ->
+		  false
+	  end,
+    %erlang:display(Res),
+    true = Res,
     ok.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 no_live_killing(doc) ->
@@ -900,6 +895,19 @@ cleanup() ->
 	_ ->
 	    true
     end.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Start an ssh channel to simulate remote access
+
+proxy_port() ->
+    ?PORT+1.
+
+ssh_proxy(SSHHost,ProxyPort) ->
+    ?line Host = lists:nth(2,string:tokens(atom_to_list(node()),"@")),
+    % Requires proxy to be a unix host with the command 'read' accessible
+    ?line osrun("ssh -L "++integer_to_list(ProxyPort)++":"++Host++":"
+		++integer_to_list(?PORT)++" "++SSHHost++" read").
+    
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

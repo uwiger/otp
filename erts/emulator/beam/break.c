@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 1996-2010. All Rights Reserved.
+ * Copyright Ericsson AB 1996-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -98,7 +98,7 @@ process_killer(void)
 		switch(j) {
 		case 'k':
 		    if (rp->status == P_WAITING) {
-			Uint32 rp_locks = ERTS_PROC_LOCKS_XSIG_SEND;
+			ErtsProcLocks rp_locks = ERTS_PROC_LOCKS_XSIG_SEND;
 			erts_smp_proc_inc_refc(rp);
 			erts_smp_proc_lock(rp, rp_locks);
 			(void) erts_send_exit_signal(NULL,
@@ -266,7 +266,7 @@ print_process_info(int to, void *to_arg, Process *p)
        }
        erts_print(to, to_arg, "Number of heap fragments: %d\n", frags);
     }
-    erts_print(to, to_arg, "Heap fragment data: %bpu\n", MBUF_SIZE(p));
+    erts_print(to, to_arg, "Heap fragment data: %beu\n", MBUF_SIZE(p));
 
     scb = ERTS_PROC_GET_SAVED_CALLS_BUF(p);
     if (scb) {
@@ -313,12 +313,11 @@ print_process_info(int to, void *to_arg, Process *p)
     }
     
     /* print the number of reductions etc */
-    erts_print(to, to_arg, "Reductions: %bpu\n", p->reds);
+    erts_print(to, to_arg, "Reductions: %beu\n", p->reds);
 
-    erts_print(to, to_arg, "Stack+heap: %bpu\n", p->heap_sz);
+    erts_print(to, to_arg, "Stack+heap: %beu\n", p->heap_sz);
     erts_print(to, to_arg, "OldHeap: %bpu\n",
-               (OLD_HEAP(p) == NULL) ? 0 :
-               (unsigned)(OLD_HEND(p) - OLD_HEAP(p)) );
+               (OLD_HEAP(p) == NULL) ? 0 : (OLD_HEND(p) - OLD_HEAP(p)) );
     erts_print(to, to_arg, "Heap unused: %bpu\n", (p->hend - p->htop));
     erts_print(to, to_arg, "OldHeap unused: %bpu\n",
 	       (OLD_HEAP(p) == NULL) ? 0 : (OLD_HEND(p) - OLD_HTOP(p)) );
@@ -558,7 +557,7 @@ do_break(void)
 #endif
 #ifdef DEBUG
 	case 't':
-	    p_slpq();
+	    erts_p_slpq();
 	    return;
 	case 'b':
 	    bin_check();
@@ -624,9 +623,9 @@ bin_check(void)
 		    erts_printf("Process %T holding binary data \n", rp->id);
 		    printed = 1;
 		}
-		erts_printf("0x%08lx orig_size: %ld, norefs = %ld\n",
-			    (unsigned long)bp->val, 
-			    (long)bp->val->orig_size, 
+		erts_printf("%p orig_size: %bpd, norefs = %bpd\n",
+			    bp->val, 
+			    bp->val->orig_size, 
 			    erts_smp_atomic_read(&bp->val->refc));
 	    }
 	}

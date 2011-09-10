@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2009-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2009-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -29,7 +29,7 @@
 
 -compile(export_all).
 
--include_lib("test_server/include/test_server.hrl").
+-include_lib("common_test/include/ct.hrl").
 -include_lib("common_test/include/ct_event.hrl").
 
 -define(eh, ct_test_support_eh).
@@ -56,19 +56,22 @@ init_per_testcase(TestCase, Config) ->
 end_per_testcase(TestCase, Config) ->
     ct_test_support:end_per_testcase(TestCase, Config).
 
-all(doc) -> 
-    [""];
+suite() -> [{ct_hooks,[ts_install_cth]}].
 
-all(suite) -> 
-    [
-     cfg_error,
-     lib_error,
-     no_compile,
-     timetrap_end_conf,
-     timetrap_normal,
-     timetrap_extended
-    ].
-     
+all() -> 
+    [cfg_error, lib_error, no_compile, timetrap_end_conf,
+     timetrap_normal, timetrap_extended].
+
+groups() -> 
+    [].
+
+init_per_group(_GroupName, Config) ->
+    Config.
+
+end_per_group(_GroupName, Config) ->
+    Config.
+
+
 
 %%--------------------------------------------------------------------
 %% TEST CASES
@@ -99,8 +102,9 @@ cfg_error(Config) when is_list(Config) ->
     Events = ct_test_support:get_events(ERPid, Config),
 
     ct_test_support:log_events(cfg_error, 
-			       reformat(Events, ?eh), 
-			       ?config(priv_dir, Config)),
+			       reformat(Events, ?eh),
+			       ?config(priv_dir, Config),
+			       Opts),
 
     TestEvents = events_to_check(cfg_error),
     ok = ct_test_support:verify_events(TestEvents, Events, Config).
@@ -117,12 +121,13 @@ lib_error(Config) when is_list(Config) ->
     Events = ct_test_support:get_events(ERPid, Config),
 
     ct_test_support:log_events(lib_error, 
-			       reformat(Events, ?eh), 
-			       ?config(priv_dir, Config)),
+			       reformat(Events, ?eh),
+			       ?config(priv_dir, Config),
+			       Opts),
 
     TestEvents = events_to_check(lib_error),
     ok = ct_test_support:verify_events(TestEvents, Events, Config).
-    
+
 
 %%%-----------------------------------------------------------------
 %%% 
@@ -135,12 +140,13 @@ no_compile(Config) when is_list(Config) ->
     Events = ct_test_support:get_events(ERPid, Config),
 
     ct_test_support:log_events(no_compile, 
-			       reformat(Events, ?eh), 
-			       ?config(priv_dir, Config)),
+			       reformat(Events, ?eh),
+			       ?config(priv_dir, Config),
+			       Opts),
 
     TestEvents = events_to_check(no_compile),
     ok = ct_test_support:verify_events(TestEvents, Events, Config).
-    
+
 %%%-----------------------------------------------------------------
 %%%
 timetrap_end_conf(Config) when is_list(Config) ->
@@ -153,7 +159,8 @@ timetrap_end_conf(Config) when is_list(Config) ->
 
     ct_test_support:log_events(timetrap_end_conf,
 			       reformat(Events, ?eh),
-			       ?config(priv_dir, Config)),
+			       ?config(priv_dir, Config),
+			       Opts),
 
     TestEvents = events_to_check(timetrap_end_conf),
     ok = ct_test_support:verify_events(TestEvents, Events, Config).
@@ -173,7 +180,8 @@ timetrap_normal(Config) when is_list(Config) ->
 
     ct_test_support:log_events(timetrap_normal,
 			       reformat(Events, ?eh),
-			       ?config(priv_dir, Config)),
+			       ?config(priv_dir, Config),
+			       Opts),
 
     TestEvents = events_to_check(timetrap_normal),
     ok = ct_test_support:verify_events(TestEvents, Events, Config).
@@ -195,9 +203,28 @@ timetrap_extended(Config) when is_list(Config) ->
 
     ct_test_support:log_events(timetrap_extended,
 			       reformat(Events, ?eh),
-			       ?config(priv_dir, Config)),
+			       ?config(priv_dir, Config),
+			       Opts),
 
     TestEvents = events_to_check(timetrap_extended),
+    ok = ct_test_support:verify_events(TestEvents, Events, Config).
+
+%%%-----------------------------------------------------------------
+%%%
+timetrap_parallel(Config) when is_list(Config) ->
+    DataDir = ?config(data_dir, Config),
+    Join = fun(D, S) -> filename:join(D, "error/test/"++S) end,
+    Suite = Join(DataDir, "timetrap_3_SUITE"),
+    {Opts,ERPid} = setup([{suite,Suite}], Config),
+    ok = ct_test_support:run(Opts, Config),
+    Events = ct_test_support:get_events(ERPid, Config),
+
+    ct_test_support:log_events(timetrap_parallel,
+			       reformat(Events, ?eh),
+			       ?config(priv_dir, Config),
+			       Opts),
+
+    TestEvents = events_to_check(timetrap_parallel),
     ok = ct_test_support:verify_events(TestEvents, Events, Config).
 
 %%%-----------------------------------------------------------------
@@ -214,8 +241,8 @@ setup(Test, Config) ->
 
 reformat(Events, EH) ->
     ct_test_support:reformat(Events, EH).
-%reformat(Events, _EH) ->
-%    Events.
+						%reformat(Events, _EH) ->
+						%    Events.
 
 %%%-----------------------------------------------------------------
 %%% TEST EVENTS
@@ -233,7 +260,7 @@ test_events(cfg_error) ->
     [
      {?eh,start_logging,{'DEF','RUNDIR'}},
      {?eh,test_start,{'DEF',{'START_TIME','LOGDIR'}}},
-     {?eh,start_info,{14,14,42}},
+     {?eh,start_info,{14,14,43}},
 
      {?eh,tc_start,{cfg_error_1_SUITE,init_per_suite}},
      {?eh,tc_done,
@@ -248,7 +275,7 @@ test_events(cfg_error) ->
      {?eh,test_stats,{0,0,{0,2}}},
      {?eh,tc_auto_skip,
       {cfg_error_1_SUITE,end_per_suite,{failed,{cfg_error_1_SUITE,init_per_suite,
-				      {'EXIT',init_per_suite_fails}}}}},
+						{'EXIT',init_per_suite_fails}}}}},
 
      {?eh,tc_start,{cfg_error_2_SUITE,init_per_suite}},
      {?eh,tc_done,
@@ -378,12 +405,12 @@ test_events(cfg_error) ->
       {?eh,tc_auto_skip,
        {cfg_error_8_SUITE,tc1,
 	{failed,{cfg_error_8_SUITE,init_per_group,
-	  {'EXIT',{init_per_group_fails,g1}}}}}},
+		 {'EXIT',{init_per_group_fails,g1}}}}}},
       {?eh,test_stats,{4,0,{0,11}}},
       {?eh,tc_auto_skip,
        {cfg_error_8_SUITE,end_per_group,
 	{failed,{cfg_error_8_SUITE,init_per_group,
-	  {'EXIT',{init_per_group_fails,g1}}}}}}],
+		 {'EXIT',{init_per_group_fails,g1}}}}}}],
 
      [{?eh,tc_start,{cfg_error_8_SUITE,{init_per_group,g2,[]}}},
       {?eh,tc_done,{cfg_error_8_SUITE,
@@ -396,13 +423,12 @@ test_events(cfg_error) ->
       {?eh,tc_auto_skip,{cfg_error_8_SUITE,end_per_group,
 			 {failed,{cfg_error_8_SUITE,init_per_group,
 				  {timetrap_timeout,2000}}}}}],
-     
+
      [{?eh,tc_start,{cfg_error_8_SUITE,{init_per_group,g3,[]}}},
       {?eh,tc_done,
        {cfg_error_8_SUITE,{init_per_group,g3,[]},
 	{failed,{error,{{badmatch,42},
 			[{cfg_error_8_SUITE,init_per_group,2},
-			 {cfg_error_8_SUITE,init_per_group,2},
 			 {test_server,my_apply,3},
 			 {test_server,ts_tc,3},
 			 {test_server,run_test_case_eval1,6},
@@ -412,7 +438,6 @@ test_events(cfg_error) ->
 	{failed,{cfg_error_8_SUITE,init_per_group,
 		 {'EXIT',{{badmatch,42},
 			  [{cfg_error_8_SUITE,init_per_group,2},
-			   {cfg_error_8_SUITE,init_per_group,2},
 			   {test_server,my_apply,3},
 			   {test_server,ts_tc,3},
 			   {test_server,run_test_case_eval1,6},
@@ -423,7 +448,6 @@ test_events(cfg_error) ->
 	{failed,{cfg_error_8_SUITE,init_per_group,
 		 {'EXIT',{{badmatch,42},
 			  [{cfg_error_8_SUITE,init_per_group,2},
-			   {cfg_error_8_SUITE,init_per_group,2},
 			   {test_server,my_apply,3},
 			   {test_server,ts_tc,3},
 			   {test_server,run_test_case_eval1,6},
@@ -436,7 +460,7 @@ test_events(cfg_error) ->
       {?eh,test_stats,{5,0,{0,13}}},
       {?eh,tc_start,{cfg_error_8_SUITE,{end_per_group,g4,[]}}},
       {?eh,tc_done,{cfg_error_8_SUITE,{end_per_group,g4,[]},ok}}],
-     
+
      [{?eh,tc_start,{cfg_error_8_SUITE,{init_per_group,g5,[]}}},
       {?eh,tc_done,{cfg_error_8_SUITE,{init_per_group,g5,[]},ok}},
       {?eh,tc_start,{cfg_error_8_SUITE,tc1}},
@@ -517,16 +541,19 @@ test_events(cfg_error) ->
      %%! end_tc failes the testcase
      {?eh,tc_done,{cfg_error_9_SUITE,tc6,ok}},
      {?eh,test_stats,{9,2,{0,18}}},
+     {?eh,tc_start,{cfg_error_9_SUITE,tc7}},
+     {?eh,tc_done,{cfg_error_9_SUITE,tc7,{failed,{error,tc7_should_be_failed}}}},
+     {ct_test_support_eh,test_stats,{9,3,{0,18}}},
      {?eh,tc_start,{cfg_error_9_SUITE,tc11}},
      {?eh,tc_done,{cfg_error_9_SUITE,tc11,
 		   {failed,{cfg_error_9_SUITE,end_per_testcase,
 			    {'EXIT',warning_should_be_printed}}}}},
-     {?eh,test_stats,{10,2,{0,18}}},
+     {?eh,test_stats,{10,3,{0,18}}},
      {?eh,tc_start,{cfg_error_9_SUITE,tc12}},
      {?eh,tc_done,{cfg_error_9_SUITE,tc12,
 		   {failed,{cfg_error_9_SUITE,end_per_testcase,
 			    {timetrap_timeout,2000}}}}},
-     {?eh,test_stats,{11,2,{0,18}}},
+     {?eh,test_stats,{11,3,{0,18}}},
      {?eh,tc_start,{cfg_error_9_SUITE,tc13}},
      {?eh,tc_done,{cfg_error_9_SUITE,tc13,
 		   {failed,{cfg_error_9_SUITE,end_per_testcase,
@@ -536,11 +563,11 @@ test_events(cfg_error) ->
 				      {test_server,do_end_per_testcase,4},
 				      {test_server,run_test_case_eval1,6},
 				      {test_server,run_test_case_eval,8}]}}}}}},
-     {?eh,test_stats,{12,2,{0,18}}},
+     {?eh,test_stats,{12,3,{0,18}}},
      {?eh,tc_start,{cfg_error_9_SUITE,tc14}},
      {?eh,tc_done,
       {cfg_error_9_SUITE,tc14,{failed,{error,tc14_should_be_failed}}}},
-     {?eh,test_stats,{12,3,{0,18}}},
+     {?eh,test_stats,{12,4,{0,18}}},
 
      {?eh,tc_start,{cfg_error_9_SUITE,end_per_suite}},
      {?eh,tc_done,{cfg_error_9_SUITE,end_per_suite,ok}},
@@ -551,7 +578,7 @@ test_events(cfg_error) ->
      {?eh,tc_auto_skip,{cfg_error_10_SUITE,tc1,
 			{failed,{cfg_error_10_SUITE,init_per_suite,
 				 {failed,fail_init_per_suite}}}}},
-     {?eh,test_stats,{12,3,{0,19}}},
+     {?eh,test_stats,{12,4,{0,19}}},
      {?eh,tc_auto_skip,{cfg_error_10_SUITE,end_per_suite,
 			{failed,{cfg_error_10_SUITE,init_per_suite,
 				 {failed,fail_init_per_suite}}}}},
@@ -560,40 +587,40 @@ test_events(cfg_error) ->
      {?eh,tc_start,{cfg_error_11_SUITE,tc1}},
      {?eh,tc_done,{cfg_error_11_SUITE,tc1,
 		   {skipped,{config_name_already_in_use,[dummy0]}}}},
-     {?eh,test_stats,{12,3,{1,19}}},
+     {?eh,test_stats,{12,4,{1,19}}},
      {?eh,tc_start,{cfg_error_11_SUITE,tc2}},
      {?eh,tc_done,{cfg_error_11_SUITE,tc2,ok}},
-     {?eh,test_stats,{13,3,{1,19}}},
+     {?eh,test_stats,{13,4,{1,19}}},
      {?eh,tc_start,{cfg_error_11_SUITE,end_per_suite}},
      {?eh,tc_done,{cfg_error_11_SUITE,end_per_suite,ok}},
      {?eh,tc_start,{cfg_error_12_SUITE,tc1}},
      {?eh,tc_done,{cfg_error_12_SUITE,tc1,{failed,{timetrap_timeout,500}}}},
-     {?eh,test_stats,{13,4,{1,19}}},
+     {?eh,test_stats,{13,5,{1,19}}},
      {?eh,tc_start,{cfg_error_12_SUITE,tc2}},
      {?eh,tc_done,{cfg_error_12_SUITE,tc2,{failed,
 					   {cfg_error_12_SUITE,end_per_testcase,
 					    {timetrap_timeout,500}}}}},
-     {?eh,test_stats,{14,4,{1,19}}},
+     {?eh,test_stats,{14,5,{1,19}}},
      {?eh,tc_start,{cfg_error_12_SUITE,tc3}},
      {?eh,tc_done,{cfg_error_12_SUITE,tc3,ok}},
-     {?eh,test_stats,{15,4,{1,19}}},
+     {?eh,test_stats,{15,5,{1,19}}},
      {?eh,tc_start,{cfg_error_12_SUITE,tc4}},
      {?eh,tc_done,{cfg_error_12_SUITE,tc4,{failed,
 					   {cfg_error_12_SUITE,end_per_testcase,
 					    {timetrap_timeout,500}}}}},
-     {?eh,test_stats,{16,4,{1,19}}},
+     {?eh,test_stats,{16,5,{1,19}}},
      {?eh,tc_start,{cfg_error_13_SUITE,init_per_suite}},
      {?eh,tc_done,{cfg_error_13_SUITE,init_per_suite,ok}},
      {?eh,tc_start,{cfg_error_13_SUITE,tc1}},
      {?eh,tc_done,{cfg_error_13_SUITE,tc1,ok}},
-     {?eh,test_stats,{17,4,{1,19}}},
+     {?eh,test_stats,{17,5,{1,19}}},
      {?eh,tc_start,{cfg_error_13_SUITE,end_per_suite}},
      {?eh,tc_done,{cfg_error_13_SUITE,end_per_suite,ok}},
      {?eh,tc_start,{cfg_error_14_SUITE,init_per_suite}},
      {?eh,tc_done,{cfg_error_14_SUITE,init_per_suite,ok}},
      {?eh,tc_start,{cfg_error_14_SUITE,tc1}},
      {?eh,tc_done,{cfg_error_14_SUITE,tc1,ok}},
-     {?eh,test_stats,{18,4,{1,19}}},
+     {?eh,test_stats,{18,5,{1,19}}},
      {?eh,tc_start,{cfg_error_14_SUITE,end_per_suite}},
      {?eh,tc_done,{cfg_error_14_SUITE,end_per_suite,
 		   {comment,
@@ -726,7 +753,7 @@ test_events(timetrap_normal) ->
     [
      {?eh,start_logging,{'DEF','RUNDIR'}},
      {?eh,test_start,{'DEF',{'START_TIME','LOGDIR'}}},
-     {?eh,start_info,{1,1,3}},
+     {?eh,start_info,{1,1,4}},
      {?eh,tc_start,{timetrap_2_SUITE,init_per_suite}},
      {?eh,tc_done,{timetrap_2_SUITE,init_per_suite,ok}},
      {?eh,tc_start,{timetrap_2_SUITE,tc0}},
@@ -741,6 +768,9 @@ test_events(timetrap_normal) ->
      {?eh,tc_done,
       {timetrap_2_SUITE,tc2,{failed,{timetrap_timeout,500}}}},
      {?eh,test_stats,{0,3,{0,0}}},
+     {?eh,tc_start,{timetrap_2_SUITE,tc3}},
+     {?eh,tc_done,{timetrap_2_SUITE,tc3,ok}},
+     {?eh,test_stats,{1,3,{0,0}}},
      {?eh,tc_start,{timetrap_2_SUITE,end_per_suite}},
      {?eh,tc_done,{timetrap_2_SUITE,end_per_suite,ok}},
      {?eh,test_done,{'DEF','STOP_TIME'}},
@@ -751,7 +781,7 @@ test_events(timetrap_extended) ->
     [
      {?eh,start_logging,{'DEF','RUNDIR'}},
      {?eh,test_start,{'DEF',{'START_TIME','LOGDIR'}}},
-     {?eh,start_info,{1,1,3}},
+     {?eh,start_info,{1,1,4}},
      {?eh,tc_start,{timetrap_2_SUITE,init_per_suite}},
      {?eh,tc_done,{timetrap_2_SUITE,init_per_suite,ok}},
      {?eh,tc_start,{timetrap_2_SUITE,tc0}},
@@ -766,8 +796,52 @@ test_events(timetrap_extended) ->
      {?eh,tc_done,
       {timetrap_2_SUITE,tc2,{failed,{timetrap_timeout,1000}}}},
      {?eh,test_stats,{0,3,{0,0}}},
+     {?eh,tc_start,{timetrap_2_SUITE,tc3}},
+     {?eh,tc_done,{timetrap_2_SUITE,tc3,ok}},
+     {?eh,test_stats,{1,3,{0,0}}},
      {?eh,tc_start,{timetrap_2_SUITE,end_per_suite}},
      {?eh,tc_done,{timetrap_2_SUITE,end_per_suite,ok}},
      {?eh,test_done,{'DEF','STOP_TIME'}},
      {?eh,stop_logging,[]}
-    ].
+    ];
+
+test_events(timetrap_parallel) ->
+    [
+     {?eh,start_logging,{'DEF','RUNDIR'}},
+     {?eh,test_start,{'DEF',{'START_TIME','LOGDIR'}}},
+     {?eh,start_info,{1,1,7}},
+     {?eh,tc_done,{timetrap_3_SUITE,init_per_suite,ok}},
+     {parallel,
+      [{?eh,tc_start,
+	{timetrap_3_SUITE,{init_per_group,g1,[parallel]}}},
+       {?eh,tc_done,
+	{timetrap_3_SUITE,{init_per_group,g1,[parallel]},ok}},
+       {?eh,tc_start,{timetrap_3_SUITE,tc0}},
+       {?eh,tc_start,{timetrap_3_SUITE,tc1}},
+       {?eh,tc_start,{timetrap_3_SUITE,tc2}},
+       {?eh,tc_start,{timetrap_3_SUITE,tc3}},
+       {?eh,tc_start,{timetrap_3_SUITE,tc4}},
+       {?eh,tc_start,{timetrap_3_SUITE,tc6}},
+       {?eh,tc_start,{timetrap_3_SUITE,tc7}},
+       {?eh,tc_done,
+        {timetrap_3_SUITE,tc1,{failed,{timetrap_timeout,500}}}},
+       {?eh,tc_done,
+        {timetrap_3_SUITE,tc2,{failed,{timetrap_timeout,1000}}}},
+       {?eh,tc_done,
+        {timetrap_3_SUITE,tc6,{failed,{timetrap_timeout,1000}}}},
+       {?eh,tc_done,
+        {timetrap_3_SUITE,tc7,{failed,{timetrap_timeout,1500}}}},
+       {?eh,tc_done,
+        {timetrap_3_SUITE,tc0,{failed,{timetrap_timeout,2000}}}},
+       {?eh,tc_done,
+        {timetrap_3_SUITE,tc4,{failed,{timetrap_timeout,2000}}}},
+       {?eh,tc_done,
+        {timetrap_3_SUITE,tc3,{failed,{timetrap_timeout,3000}}}},
+       {?eh,test_stats,{0,7,{0,0}}},
+       {?eh,tc_start,
+	{timetrap_3_SUITE,{end_per_group,g1,[parallel]}}},
+       {?eh,tc_done,
+	{timetrap_3_SUITE,{end_per_group,g1,[parallel]},ok}}]},
+     {?eh,tc_done,{timetrap_3_SUITE,end_per_suite,ok}},
+     {?eh,test_done,{'DEF','STOP_TIME'}},
+     {?eh,stop_logging,[]}].

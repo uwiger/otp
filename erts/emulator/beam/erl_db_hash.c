@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 1998-2010. All Rights Reserved.
+ * Copyright Ericsson AB 1998-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -105,7 +105,7 @@
 #define NSEG_2   256 /* Size of second segment table */
 #define NSEG_INC 128 /* Number of segments to grow after that */
 
-#define SEGTAB(tb) ((struct segment**)erts_smp_atomic_read(&(tb)->segtab))
+#define SEGTAB(tb) ((struct segment**)erts_smp_atomic_read_acqb(&(tb)->segtab))
 #define NACTIVE(tb) ((int)erts_smp_atomic_read(&(tb)->nactive))
 #define NITEMS(tb) ((int)erts_smp_atomic_read(&(tb)->common.nitems))
 
@@ -122,8 +122,8 @@
 */
 static ERTS_INLINE Uint hash_to_ix(DbTableHash* tb, HashValue hval)
 {
-    Uint mask = erts_smp_atomic_read(&tb->szm);
-    Uint ix = hval & mask; 
+    Uint mask = erts_smp_atomic_read_acqb(&tb->szm);
+    Uint ix = hval & mask;
     if (ix >= erts_smp_atomic_read(&tb->nactive)) {
 	ix &= mask>>1;
 	ASSERT(ix < erts_smp_atomic_read(&tb->nactive));
@@ -135,8 +135,8 @@ static ERTS_INLINE Uint hash_to_ix(DbTableHash* tb, HashValue hval)
 */
 static ERTS_INLINE void add_fixed_deletion(DbTableHash* tb, int ix)
 {
-    long was_next;
-    long exp_next;
+    erts_aint_t was_next;
+    erts_aint_t exp_next;
     FixedDeletion* fixd = (FixedDeletion*) erts_db_alloc(ERTS_ALC_T_DB_FIX_DEL,
 							 (DbTable *) tb,
 							 sizeof(FixedDeletion));
@@ -146,7 +146,9 @@ static ERTS_INLINE void add_fixed_deletion(DbTableHash* tb, int ix)
     do { /* Lockless atomic insertion in linked list: */
 	exp_next = was_next;
 	fixd->next = (FixedDeletion*) exp_next;
-	was_next = erts_smp_atomic_cmpxchg(&tb->fixdel, (long)fixd, exp_next);
+	was_next = erts_smp_atomic_cmpxchg(&tb->fixdel,
+					   (erts_aint_t) fixd,
+					   exp_next);
     }while (was_next != exp_next);
 }
 
@@ -255,12 +257,6 @@ static ERTS_INLINE Sint next_slot_w(DbTableHash* tb, Uint ix,
 #endif
 }
 
-
-/* 
- * tplp is an untagged pointer to a tuple we know is large enough 
- * and dth is a pointer to a DbTableHash.   
- */
-#define GETKEY(dth, tplp)   (*((tplp) +  (dth)->common.keypos))
 
 /*
  * Some special binary flags
@@ -432,6 +428,9 @@ static ERTS_INLINE void try_shrink(DbTableHash* tb)
     }
 }	
 
+#define EQ_REL(x,y,y_base) \
+    (is_same(x,NULL,y,y_base) || (is_not_both_immed((x),(y)) && eq_rel((x),NULL,(y),y_base)))
+
 /* Is this a live object (not pseodo-deleted) with the specified key? 
 */
 static ERTS_INLINE int has_live_key(DbTableHash* tb, HashDbTerm* b,
@@ -441,7 +440,7 @@ static ERTS_INLINE int has_live_key(DbTableHash* tb, HashDbTerm* b,
     else {
 	Eterm itemKey = GETKEY(tb, b->dbterm.tpl);
 	ASSERT(!is_header(itemKey));
-	return EQ(key,itemKey);
+	return EQ_REL(key, itemKey, b->dbterm.tpl);
     }
 }
 
@@ -454,7 +453,7 @@ static ERTS_INLINE int has_key(DbTableHash* tb, HashDbTerm* b,
     else {
 	Eterm itemKey = GETKEY(tb, b->dbterm.tpl);
 	ASSERT(!is_header(itemKey));
-	return EQ(key,itemKey);
+	return EQ_REL(key, itemKey, b->dbterm.tpl);
     }
 }
 
@@ -541,12 +540,12 @@ static void restore_fixdel(DbTableHash* tb, FixedDeletion* fixdel)
 {
     /*int tries = 0;*/
     DEBUG_WAIT();
-    if (erts_smp_atomic_cmpxchg(&tb->fixdel, (long)fixdel,
-				(long)NULL) != (long)NULL) {
+    if (erts_smp_atomic_cmpxchg(&tb->fixdel, (erts_aint_t)fixdel,
+				(erts_aint_t)NULL) != (erts_aint_t)NULL) {
 	/* Oboy, must join lists */    
 	FixedDeletion* last = fixdel;
-	long was_tail;
-	long exp_tail;
+	erts_aint_t was_tail;
+	erts_aint_t exp_tail;
 
 	while (last->next != NULL) last = last->next;	
 	was_tail = erts_smp_atomic_read(&tb->fixdel);
@@ -555,7 +554,7 @@ static void restore_fixdel(DbTableHash* tb, FixedDeletion* fixdel)
 	    last->next = (FixedDeletion*) exp_tail;
 	    /*++tries;*/
 	    DEBUG_WAIT();
-	    was_tail = erts_smp_atomic_cmpxchg(&tb->fixdel, (long)fixdel,
+	    was_tail = erts_smp_atomic_cmpxchg(&tb->fixdel, (erts_aint_t)fixdel,
 					       exp_tail);
 	}while (was_tail != exp_tail);
     }
@@ -573,7 +572,7 @@ void db_unfix_table_hash(DbTableHash *tb)
 		       || (erts_smp_lc_rwmtx_is_rlocked(&tb->common.rwlock)
 			   && !tb->common.is_thread_safe));
 restart:
-    fixdel = (FixedDeletion*) erts_smp_atomic_xchg(&tb->fixdel, (long)NULL);
+    fixdel = (FixedDeletion*) erts_smp_atomic_xchg(&tb->fixdel, (erts_aint_t)NULL);
     while (fixdel != NULL) {
 	FixedDeletion *fx = fixdel;
 	int ix = fx->slot;
@@ -642,8 +641,8 @@ int db_create_hash(Process *p, DbTable *tbl)
 
     erts_smp_atomic_init(&tb->szm, SEGSZ_MASK);
     erts_smp_atomic_init(&tb->nactive, SEGSZ);
-    erts_smp_atomic_init(&tb->fixdel, (long)NULL);
-    erts_smp_atomic_init(&tb->segtab, (long) alloc_ext_seg(tb,0,NULL)->segtab);
+    erts_smp_atomic_init(&tb->fixdel, (erts_aint_t)NULL);
+    erts_smp_atomic_init(&tb->segtab, (erts_aint_t) alloc_ext_seg(tb,0,NULL)->segtab);
     tb->nsegs = NSEG_1;
     tb->nslots = SEGSZ;
 
@@ -669,6 +668,7 @@ int db_create_hash(Process *p, DbTable *tbl)
     else { /* coarse locking */
 	tb->locks = NULL;
     }
+    ERTS_THR_MEMORY_BARRIER;
 #endif /* ERST_SMP */
     return DB_ERROR_NONE;
 }
@@ -694,9 +694,7 @@ static int db_first_hash(Process *p, DbTable *tbl, Eterm *ret)
 	}
     }
     if (list != NULL) {
-	Eterm key = GETKEY(tb, list->dbterm.tpl);
-	
-	COPY_OBJECT(key, p, ret);
+	*ret = db_copy_key(p, tbl, &list->dbterm);
 	RUNLOCK_HASH(lck);
     }
     else {
@@ -744,7 +742,7 @@ static int db_next_hash(Process *p, DbTable *tbl, Eterm key, Eterm *ret)
 	*ret = am_EOT;
     }
     else {
-	COPY_OBJECT(GETKEY(tb, b->dbterm.tpl), p, ret);
+	*ret = db_copy_key(p, tbl, &b->dbterm);
 	RUNLOCK_HASH(lck);
     }    
     return DB_ERROR_NONE;
@@ -1306,8 +1304,8 @@ static int db_select_continue_hash(Process *p,
     }	  
     for(;;) {
 	if (current->hvalue != INVALID_HASH && 
-	    (match_res = db_prog_match_and_copy(&tb->common, p, mp, all_objects,
-						&current->dbterm, &hp, 2),
+	    (match_res = db_match_dbterm(&tb->common, p, mp, all_objects,
+					 &current->dbterm, &hp, 2),
 	     is_value(match_res))) {
 
 	    match_list = CONS(hp, match_res, match_list);
@@ -1471,8 +1469,8 @@ static int db_select_chunk_hash(Process *p, DbTable *tbl,
     for(;;) {
 	if (current != NULL) {
 	    if (current->hvalue != INVALID_HASH) {
-		match_res = db_prog_match_and_copy(&tb->common, p, mpi.mp, 0,
-						   &current->dbterm, &hp, 2);
+		match_res = db_match_dbterm(&tb->common, p, mpi.mp, 0,
+					    &current->dbterm, &hp, 2);
 		if (is_value(match_res)) {
 		    match_list = CONS(hp, match_res, match_list);
 		    ++got;
@@ -1637,8 +1635,8 @@ static int db_select_count_hash(Process *p,
     for(;;) {
 	if (current != NULL) {
 	    if (current->hvalue != INVALID_HASH) {
-		if (db_prog_match_and_copy(&tb->common, p, mpi.mp, 0,
-					   &current->dbterm, NULL,0) == am_true) {
+		if (db_match_dbterm(&tb->common, p, mpi.mp, 0,
+				    &current->dbterm, NULL,0) == am_true) {
 		    ++got;
 		}
 		--num_left;
@@ -1715,9 +1713,9 @@ static int db_select_delete_hash(Process *p,
     Eterm mpb;
     Eterm egot;
 #ifdef ERTS_SMP
-    int fixated_by_me = tb->common.is_thread_safe ? 0 : 1; /* ToDo: something nicer */
+    erts_aint_t fixated_by_me = tb->common.is_thread_safe ? 0 : 1; /* ToDo: something nicer */
 #else
-    int fixated_by_me = 0;
+    erts_aint_t fixated_by_me = 0;
 #endif
     erts_smp_rwmtx_t* lck;
 
@@ -1786,8 +1784,8 @@ static int db_select_delete_hash(Process *p,
 	} 
 	else {
 	    int did_erase = 0;
-	    if (db_prog_match_and_copy(&tb->common, p, mpi.mp, 0,
-				       &(*current)->dbterm, NULL, 0) == am_true) {
+	    if (db_match_dbterm(&tb->common, p, mpi.mp, 0,
+				&(*current)->dbterm, NULL, 0) == am_true) {
 		if (NFIXED(tb) > fixated_by_me) { /* fixated by others? */
 		    if (slot_ix != last_pseudo_delete) {
 			add_fixed_deletion(tb, slot_ix);
@@ -1897,8 +1895,8 @@ static int db_select_delete_continue_hash(Process *p,
 	} 
 	else {
 	    int did_erase = 0;
-	    if (db_prog_match_and_copy(&tb->common, p, mp, 0,
-				       &(*current)->dbterm, NULL, 0) == am_true) {
+	    if (db_match_dbterm(&tb->common, p, mp, 0,
+				&(*current)->dbterm, NULL, 0) == am_true) {
 		if (NFIXED(tb) > fixated_by_me) { /* fixated by others? */
 		    if (slot_ix != last_pseudo_delete) {
 			add_fixed_deletion(tb, slot_ix);
@@ -1997,8 +1995,8 @@ static int db_select_count_continue_hash(Process *p,
 		current = current->next;
 		continue;
 	    }
-	    if (db_prog_match_and_copy(&tb->common, p, mp, 0, &current->dbterm,
-				       NULL, 0) == am_true) {
+	    if (db_match_dbterm(&tb->common, p, mp, 0, &current->dbterm,
+				NULL, 0) == am_true) {
 		++got;
 	    }
 	    --num_left;
@@ -2088,7 +2086,14 @@ static void db_print_hash(int to, void *to_arg, int show, DbTable *tbl)
 	    while(list != 0) {
 		if (list->hvalue == INVALID_HASH)
 		    erts_print(to, to_arg, "*");
-		erts_print(to, to_arg, "%T", make_tuple(list->dbterm.tpl));
+		if (tb->common.compress) {
+		    Eterm key = GETKEY(tb, list->dbterm.tpl);
+		    erts_print(to, to_arg, "key=%R", key, list->dbterm.tpl);
+		}
+		else {
+		    Eterm obj = make_tuple_rel(list->dbterm.tpl,list->dbterm.tpl);
+		    erts_print(to, to_arg, "%R", obj, list->dbterm.tpl);
+		}
 		if (list->next != 0)
 		    erts_print(to, to_arg, ",");
 		list = list->next;
@@ -2124,11 +2129,11 @@ static int db_free_table_continue_hash(DbTable *tbl)
 		     sizeof(FixedDeletion));
 	ERTS_ETS_MISC_MEM_ADD(-sizeof(FixedDeletion));
 	if (++done >= 2*DELETE_RECORD_LIMIT) {
-	    erts_smp_atomic_set(&tb->fixdel, (long)fixdel);
+	    erts_smp_atomic_set(&tb->fixdel, (erts_aint_t)fixdel);
 	    return 0;		/* Not done */
 	}
     }
-    erts_smp_atomic_set(&tb->fixdel, (long)NULL);
+    erts_smp_atomic_set(&tb->fixdel, (erts_aint_t)NULL);
 
     done /= 2;
     while(tb->nslots != 0) {
@@ -2177,7 +2182,7 @@ static int analyze_pattern(DbTableHash *tb, Eterm pattern,
     HashValue hval = NIL;      
     int num_heads = 0;
     int i;
-    
+
     mpi->lists = mpi->dlists;
     mpi->num_lists = 0;
     mpi->key_given = 1;
@@ -2345,7 +2350,7 @@ static int alloc_seg(DbTableHash *tb)
 	    struct ext_segment* eseg;
 	    eseg = (struct ext_segment*) SEGTAB(tb)[seg_ix-1];
 	    MY_ASSERT(eseg!=NULL && eseg->s.is_ext_segment);
-	    erts_smp_atomic_set(&tb->segtab, (long) eseg->segtab);
+	    erts_smp_atomic_set_relb(&tb->segtab, (erts_aint_t) eseg->segtab);
 	    tb->nsegs = eseg->nsegs;
 	}
 	ASSERT(seg_ix < tb->nsegs);
@@ -2417,7 +2422,7 @@ static int free_seg(DbTableHash *tb, int free_records)
 	    MY_ASSERT(newtop->s.is_ext_segment);
 	    if (newtop->prev_segtab != NULL) {
 		/* Time to use a smaller segtab */
-		erts_smp_atomic_set(&tb->segtab, (long)newtop->prev_segtab);
+		erts_smp_atomic_set_relb(&tb->segtab, (erts_aint_t)newtop->prev_segtab);
 		tb->nsegs = seg_ix;
 		ASSERT(tb->nsegs == EXTSEG(SEGTAB(tb))->nsegs);
 	    }
@@ -2434,7 +2439,7 @@ static int free_seg(DbTableHash *tb, int free_records)
     if (seg_ix > 0) {
 	if (seg_ix < tb->nsegs) SEGTAB(tb)[seg_ix] = NULL;
     } else {
-	erts_smp_atomic_set(&tb->segtab, (long)NULL);
+	erts_smp_atomic_set_relb(&tb->segtab, (erts_aint_t)NULL);
     }
 #endif
     tb->nslots -= SEGSZ;
@@ -2529,9 +2534,9 @@ static void grow(DbTableHash* tb, int nactive)
     }
     erts_smp_atomic_inc(&tb->nactive);
     if (from_ix == 0) {
-	erts_smp_atomic_set(&tb->szm, szm);
+	erts_smp_atomic_set_relb(&tb->szm, szm);
     }
-    erts_smp_atomic_set(&tb->is_resizing, 0);
+    erts_smp_atomic_set_relb(&tb->is_resizing, 0);
 
     /* Finally, let's split the bucket. We try to do it in a smart way
        to keep link order and avoid unnecessary updates of next-pointers */
@@ -2563,7 +2568,7 @@ static void grow(DbTableHash* tb, int nactive)
     return;
    
 abort:
-    erts_smp_atomic_set(&tb->is_resizing, 0);
+    erts_smp_atomic_set_relb(&tb->is_resizing, 0);
 }
 
 
@@ -2607,7 +2612,7 @@ static void shrink(DbTableHash* tb, int nactive)
 	    
 	    erts_smp_atomic_set(&tb->nactive, src_ix);
 	    if (dst_ix == 0) {
-		erts_smp_atomic_set(&tb->szm, low_szm);
+		erts_smp_atomic_set_relb(&tb->szm, low_szm);
 	    }
 	    WUNLOCK_HASH(lck);
 	    
@@ -2621,7 +2626,7 @@ static void shrink(DbTableHash* tb, int nactive)
 
     }
     /*else already done */
-    erts_smp_atomic_set(&tb->is_resizing, 0);
+    erts_smp_atomic_set_relb(&tb->is_resizing, 0);
 }
 
 
@@ -2693,6 +2698,9 @@ static int db_lookup_dbterm_hash(DbTable *tbl, Eterm key, DbUpdateHandle* handle
 	    handle->dbterm = &b->dbterm;
 	    handle->mustResize = 0;
 	    handle->new_size = b->dbterm.size;
+	#if HALFWORD_HEAP
+	    handle->abs_vec = NULL;
+	#endif
 	    handle->lck = lck;
 	    /* KEEP hval WLOCKED, db_finalize_dbterm_hash will WUNLOCK */
 	    return 1;

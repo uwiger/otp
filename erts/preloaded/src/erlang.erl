@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 1996-2010. All Rights Reserved.
+%% Copyright Ericsson AB 1996-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -427,17 +427,11 @@ delay_trap(Result, Timeout) -> receive after Timeout -> Result end.
 %% have to reflect that, which we cannot forsee.
 %%
 set_cookie(Node, C) when Node =/= nonode@nohost, is_atom(Node) ->
-    Res = case C of
-	      _ when is_atom(C) ->
-		  auth:set_cookie(Node, C);
-	      {CI,CO} when is_atom(CI), is_atom(CO) ->
-		  auth:set_cookie(Node, {CI, CO});
-	      _ ->
-		  error
-	  end,
-    case Res of
-	error -> exit(badarg);
-	Other -> Other
+    case is_atom(C) of
+	true ->
+	    auth:set_cookie(Node, C);
+	false ->
+	    error(badarg)
     end.
 
 -spec get_cookie() -> atom().

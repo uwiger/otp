@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2010. All Rights Reserved.
+%% Copyright Ericsson AB 2010-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -28,7 +28,7 @@
 -module(ct_master_SUITE).
 -compile(export_all).
 
--include_lib("test_server/include/test_server.hrl").
+-include_lib("common_test/include/ct.hrl").
 -include_lib("common_test/include/ct_event.hrl").
 
 -define(eh, ct_test_support_eh).
@@ -81,15 +81,19 @@ end_per_testcase(TestCase, Config) ->
     
     ct_test_support:end_per_testcase(TestCase, Config).
 
-all() ->
-    all(suite).
-all(doc) ->
-    [""];
+suite() -> [{ct_hooks,[ts_install_cth]}].
 
-all(suite) ->
-    [
-	ct_master_test
-    ].
+all() -> 
+    [ct_master_test].
+
+groups() -> 
+    [].
+
+init_per_group(_GroupName, Config) ->
+	Config.
+
+end_per_group(_GroupName, Config) ->
+	Config.
 
 %%--------------------------------------------------------------------
 %% TEST CASES
@@ -115,8 +119,9 @@ ct_master_test(Config) when is_list(Config)->
     Events = ct_test_support:get_events(ERPid, Config),
 
     ct_test_support:log_events(groups_suite_1, 
-			       reformat(Events, ?eh), 
-			       ?config(priv_dir, Config)),
+			       reformat(Events, ?eh),
+			       PrivDir, []),
+
     find_events(NodeNames, [{tc_start,{master_SUITE,init_per_suite}},
 			    {tc_start,{master_SUITE,first_testcase}},
 			    {tc_start,{master_SUITE,second_testcase}},
@@ -170,7 +175,7 @@ make_spec(DataDir, FileName, NodeNames, Suites, Config)->
 
     ct_test_support:write_testspec(N++Include++EH++C++S++LD++NS, FileName).
 
-get_log_dir({win32,_},PrivDir, NodeName)->
+get_log_dir({win32,_}, _PrivDir, NodeName)->
     case filelib:is_dir(?TEMP_DIR) of
 	false ->
 	    file:make_dir(?TEMP_DIR);

@@ -1,7 +1,7 @@
 #
 # %CopyrightBegin%
 # 
-# Copyright Ericsson AB 1999-2009. All Rights Reserved.
+# Copyright Ericsson AB 1999-2011. All Rights Reserved.
 # 
 # The contents of this file are subject to the Erlang Public License,
 # Version 1.1, (the "License"); you may not use this file except in
@@ -34,6 +34,7 @@ RELSYSDIR = $(RELEASE_PATH)/cosNotification_test
 # Target Specs
 # ----------------------------------------------------
 TEST_SPEC_FILE = cosNotification.spec
+COVER_FILE = cosNotification.cover
 
 
 IDL_FILES = 
@@ -182,7 +183,7 @@ release_docs_spec:
 release_tests_spec: tests
 	$(INSTALL_DIR) $(RELSYSDIR)
 	$(INSTALL_DATA) $(IDL_FILES)  $(TEST_SPEC_FILE) \
-		$(ERL_FILES) $(RELSYSDIR)
+		$(COVER_FILE) $(ERL_FILES) $(RELSYSDIR)
 	$(INSTALL_DIR) $(RELSYSDIR)/$(IDLOUTDIR)
 	$(INSTALL_DATA) $(GEN_TARGET_FILES) $(GEN_FILES) \
 		$(RELSYSDIR)/$(IDLOUTDIR)

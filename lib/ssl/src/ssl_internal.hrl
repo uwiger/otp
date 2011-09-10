@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2007-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2007-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -18,7 +18,6 @@
 %%
 
 %%
-
 
 -ifndef(ssl_internal).
 -define(ssl_internal, true).
@@ -99,7 +98,11 @@
 	  reuse_sessions, % boolean()
 	  renegotiate_at,
 	  secure_renegotiate,
-	  debug           %
+	  debug,
+	  hibernate_after % undefined if not hibernating,
+                          % or number of ms of inactivity
+			  % after which ssl_connection will
+                          % go into hibernation
 	  }).
 
 -record(socket_options,

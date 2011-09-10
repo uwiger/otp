@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2009-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2009-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -29,7 +29,7 @@
 
 -compile(export_all).
 
--include_lib("test_server/include/test_server.hrl").
+-include_lib("common_test/include/ct.hrl").
 -include_lib("common_test/include/ct_event.hrl").
 
 -define(eh, ct_test_support_eh).
@@ -56,24 +56,26 @@ init_per_testcase(TestCase, Config) ->
 end_per_testcase(TestCase, Config) ->
     ct_test_support:end_per_testcase(TestCase, Config).
 
-all(doc) ->
-    [];
+suite() -> [{ct_hooks,[ts_install_cth]}].
 
-all(suite) ->
-    [repeat_cs,
-     repeat_cs_and_grs,
-     repeat_seq,
-     repeat_cs_until_any_ok,
-     repeat_gr_until_any_ok,
-     repeat_cs_until_any_fail,
-     repeat_gr_until_any_fail,
-     repeat_cs_until_all_ok,
-     repeat_gr_until_all_ok,
-     repeat_cs_until_all_fail,
-     repeat_gr_until_all_fail,
+all() -> 
+    [repeat_cs, repeat_cs_and_grs, repeat_seq,
+     repeat_cs_until_any_ok, repeat_gr_until_any_ok,
+     repeat_cs_until_any_fail, repeat_gr_until_any_fail,
+     repeat_cs_until_all_ok, repeat_gr_until_all_ok,
+     repeat_cs_until_all_fail, repeat_gr_until_all_fail,
      repeat_seq_until_any_fail,
-     repeat_shuffled_seq_until_any_fail
-    ].
+     repeat_shuffled_seq_until_any_fail].
+
+groups() -> 
+    [].
+
+init_per_group(_GroupName, Config) ->
+	Config.
+
+end_per_group(_GroupName, Config) ->
+	Config.
+
 
 %%--------------------------------------------------------------------
 %% TEST CASES
@@ -157,7 +159,8 @@ execute(TestCase, SuiteName, Group, Config) ->
 
     ct_test_support:log_events(TestCase,
 			       reformat(Events, ?eh),
-			       ?config(priv_dir, Config)),
+			       ?config(priv_dir, Config),
+			       Opts),
 
     TestEvents = events_to_check(TestCase),
     ok = ct_test_support:verify_events(TestEvents, Events, Config).
@@ -559,7 +562,6 @@ test_events(repeat_cs_until_any_fail) ->
 	  {error,
 	   {{badmatch,2},
 	    [{repeat_1_SUITE,tc_fail_1,1},
-	     {repeat_1_SUITE,tc_fail_1,1},
 	     {test_server,my_apply,3},
 	     {test_server,ts_tc,3},
 	     {test_server,run_test_case_eval1,6},

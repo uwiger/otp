@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 1999-2010. All Rights Reserved.
+%% Copyright Ericsson AB 1999-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -49,10 +49,29 @@
 		 inet_ssl,          %% inet options for internal ssl socket 
 		 cb                 %% Callback info
 		}).
+-type option()       :: socketoption() | ssloption() | transportoption().
+-type socketoption() :: term(). %% See gen_tcp and inet, import spec later when there is one to import
+-type ssloption()    :: {verify, verify_type()} |
+			{verify_fun, {fun(), InitialUserState::term()}} |
+                        {fail_if_no_peer_cert, boolean()} | {depth, integer()} |
+                        {cert, Der::binary()} | {certfile, path()} | {key, Der::binary()} |
+                        {keyfile, path()} | {password, string()} | {cacerts, [Der::binary()]} |
+                        {cacertfile, path()} | {dh, Der::binary()} | {dhfile, path()} |
+                        {ciphers, ciphers()} | {ssl_imp, ssl_imp()} | {reuse_sessions, boolean()} |
+                        {reuse_session, fun()} | {hibernate_after, integer()|undefined}.
+
+-type verify_type()  :: verify_none | verify_peer.
+-type path()         :: string().
+-type ciphers()      :: [erl_cipher_suite()] |
+			string(). % (according to old API)
+-type ssl_imp()      :: new | old.
+
+-type transportoption() :: {CallbackModule::atom(), DataTag::atom(), ClosedTag::atom()}.
+
 
 %%--------------------------------------------------------------------
--spec start() -> ok.
--spec start(permanent | transient | temporary) -> ok.  
+-spec start() -> ok  | {error, reason()}.
+-spec start(permanent | transient | temporary) -> ok | {error, reason()}.
 %%
 %% Description: Utility function that starts the ssl, 
 %% crypto and public_key applications. Default type
@@ -77,9 +96,12 @@ stop() ->
     application:stop(ssl).
 
 %%--------------------------------------------------------------------
--spec connect(host() | port(), list()) -> {ok, #sslsocket{}}.
--spec connect(host() | port(), list() | port_num(), timeout() | list()) -> {ok, #sslsocket{}}.
--spec connect(host() | port(), port_num(), list(), timeout()) -> {ok, #sslsocket{}}.      
+-spec connect(host() | port(), [option()]) -> {ok, #sslsocket{}} |
+					      {error, reason()}.
+-spec connect(host() | port(), [option()] | port_num(), timeout() | list()) ->
+		     {ok, #sslsocket{}} | {error, reason()}.
+-spec connect(host() | port(), port_num(), list(), timeout()) ->
+		     {ok, #sslsocket{}} | {error, reason()}.
 
 %%
 %% Description: Connect to a ssl server.
@@ -126,7 +148,7 @@ connect(Host, Port, Options0, Timeout) ->
     end.
 
 %%--------------------------------------------------------------------
--spec listen(port_num(), list()) ->{ok, #sslsocket{}} | {error, reason()}.
+-spec listen(port_num(), [option()]) ->{ok, #sslsocket{}} | {error, reason()}.
 		    
 %%
 %% Description: Creates a ssl listen socket.
@@ -150,8 +172,10 @@ listen(Port, Options0) ->
     end.
 
 %%--------------------------------------------------------------------
--spec transport_accept(#sslsocket{}) -> {ok, #sslsocket{}}.
--spec transport_accept(#sslsocket{}, timeout()) -> {ok, #sslsocket{}}.
+-spec transport_accept(#sslsocket{}) -> {ok, #sslsocket{}} |
+					{error, reason()}.
+-spec transport_accept(#sslsocket{}, timeout()) -> {ok, #sslsocket{}} |
+						   {error, reason()}.
 %%
 %% Description: Performs transport accept on a ssl listen socket 
 %%--------------------------------------------------------------------
@@ -189,9 +213,10 @@ transport_accept(#sslsocket{} = ListenSocket, Timeout) ->
     ssl_broker:transport_accept(Pid, ListenSocket, Timeout).
 
 %%--------------------------------------------------------------------
--spec ssl_accept(#sslsocket{}) -> {ok, #sslsocket{}} | {error, reason()}.
--spec ssl_accept(#sslsocket{}, list() | timeout()) -> {ok, #sslsocket{}} | {error, reason()}.
--spec ssl_accept(port(), list(), timeout()) -> {ok, #sslsocket{}} | {error, reason()}.
+-spec ssl_accept(#sslsocket{}) -> ok | {error, reason()}.
+-spec ssl_accept(#sslsocket{} | port(), timeout()| [option()]) ->
+			ok | {ok, #sslsocket{}} | {error, reason()}.
+-spec ssl_accept(port(), [option()], timeout()) -> {ok, #sslsocket{}} | {error, reason()}.
 %%
 %% Description: Performs accept on a ssl listen socket. e.i. performs
 %%              ssl handshake. 
@@ -238,7 +263,7 @@ close(Socket = #sslsocket{}) ->
     ssl_broker:close(Socket).
 
 %%--------------------------------------------------------------------
--spec send(#sslsocket{}, iolist()) -> ok | {error, reason()}.
+-spec send(#sslsocket{}, iodata()) -> ok | {error, reason()}.
 %% 
 %% Description: Sends data over the ssl connection
 %%--------------------------------------------------------------------
@@ -377,9 +402,9 @@ cipher_suites(openssl) ->
     [ssl_cipher:openssl_suite_name(S) || S <- ssl_cipher:suites(Version)].
 
 %%--------------------------------------------------------------------
--spec getopts(#sslsocket{}, [atom()]) -> {ok, [{atom(), term()}]}| {error, reason()}.
+-spec getopts(#sslsocket{}, [atom()]) -> {ok, [{atom(), term()}]} | {error, reason()}.
 %% 
-%% Description:
+%% Description: Gets options
 %%--------------------------------------------------------------------
 getopts(#sslsocket{fd = new_ssl, pid = Pid}, OptTags) when is_pid(Pid) ->
     ssl_connection:get_opts(Pid, OptTags);
@@ -390,9 +415,9 @@ getopts(#sslsocket{} = Socket, Options) ->
     ssl_broker:getopts(Socket, Options).
 
 %%--------------------------------------------------------------------
--spec setopts(#sslsocket{},  [{atom(), term()}]) -> ok | {error, reason()}.
+-spec setopts(#sslsocket{},  [proplists:property()]) -> ok | {error, reason()}.
 %% 
-%% Description:
+%% Description: Sets options
 %%--------------------------------------------------------------------
 setopts(#sslsocket{fd = new_ssl, pid = Pid}, Opts0) when is_pid(Pid) ->
     Opts = proplists:expand([{binary, [{mode, binary}]},
@@ -586,8 +611,10 @@ do_new_connect(Address, Port,
     catch
 	exit:{function_clause, _} ->
 	    {error, {eoptions, {cb_info, CbInfo}}};
+	exit:badarg ->
+	    {error, {eoptions, {inet_options, UserOpts}}};
 	exit:{badarg, _} ->
-	    {error,{eoptions, {inet_options, UserOpts}}}
+	    {error, {eoptions, {inet_options, UserOpts}}}
     end.
 
 old_connect(Address, Port, Options, Timeout) ->
@@ -684,7 +711,8 @@ handle_options(Opts0, _Role) ->
       reuse_sessions = handle_option(reuse_sessions, Opts, true),
       secure_renegotiate = handle_option(secure_renegotiate, Opts, false),
       renegotiate_at = handle_option(renegotiate_at, Opts, ?DEFAULT_RENEGOTIATE_AT),
-      debug      = handle_option(debug, Opts, [])
+      debug      = handle_option(debug, Opts, []),
+      hibernate_after = handle_option(hibernate_after, Opts, undefined)
      },
 
     CbInfo  = proplists:get_value(cb_info, Opts, {gen_tcp, tcp, tcp_closed, tcp_error}),    
@@ -693,7 +721,7 @@ handle_options(Opts0, _Role) ->
 		  depth, cert, certfile, key, keyfile,
 		  password, cacerts, cacertfile, dh, dhfile, ciphers,
 		  debug, reuse_session, reuse_sessions, ssl_imp,
-		  cb_info, renegotiate_at, secure_renegotiate],
+		  cb_info, renegotiate_at, secure_renegotiate, hibernate_after],
     
     SockOpts = lists:foldl(fun(Key, PropList) -> 
 				   proplists:delete(Key, PropList)
@@ -799,6 +827,10 @@ validate_option(renegotiate_at, Value) when is_integer(Value) ->
     erlang:min(Value, ?DEFAULT_RENEGOTIATE_AT);
 
 validate_option(debug, Value) when is_list(Value); Value == true ->
+    Value;
+validate_option(hibernate_after, undefined) ->
+    undefined;
+validate_option(hibernate_after, Value) when is_integer(Value), Value >= 0 ->
     Value;
 validate_option(Opt, Value) ->
     throw({error, {eoptions, {Opt, Value}}}).

@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 1998-2010. All Rights Reserved.
+%% Copyright Ericsson AB 1998-2011. All Rights Reserved.
 %% 
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -21,7 +21,7 @@
 % because udp is not deterministic.
 %
 -module(gen_udp_SUITE).
--include("test_server.hrl").
+-include_lib("test_server/include/test_server.hrl").
 
 
 -define(default_timeout, ?t:minutes(1)).
@@ -29,23 +29,42 @@
 % XXX - we should pick a port that we _know_ is closed. That's pretty hard.
 -define(CLOSED_PORT, 6666).
 
--export([all/1]).
--export([init_per_testcase/2, fin_per_testcase/2]).
+-export([all/0, suite/0,groups/0,init_per_suite/1, end_per_suite/1, 
+	 init_per_group/2,end_per_group/2]).
+-export([init_per_testcase/2, end_per_testcase/2]).
 
 -export([send_to_closed/1, 
 	 buffer_size/1, binary_passive_recv/1, bad_address/1,
 	 read_packets/1, open_fd/1, connect/1, implicit_inet6/1]).
 
-all(suite) ->
-    [send_to_closed, 
-     buffer_size, binary_passive_recv, bad_address, read_packets,
-     open_fd, connect, implicit_inet6].
+suite() -> [{ct_hooks,[ts_install_cth]}].
+
+all() -> 
+    [send_to_closed, buffer_size, binary_passive_recv,
+     bad_address, read_packets, open_fd, connect,
+     implicit_inet6].
+
+groups() -> 
+    [].
+
+init_per_suite(Config) ->
+    Config.
+
+end_per_suite(_Config) ->
+    ok.
+
+init_per_group(_GroupName, Config) ->
+    Config.
+
+end_per_group(_GroupName, Config) ->
+    Config.
+
 
 init_per_testcase(_Case, Config) ->
     ?line Dog=test_server:timetrap(?default_timeout),
     [{watchdog, Dog}|Config].
 
-fin_per_testcase(_Case, Config) ->
+end_per_testcase(_Case, Config) ->
     Dog=?config(watchdog, Config),
     test_server:timetrap_cancel(Dog),
     ok.
@@ -431,36 +450,38 @@ connect(Config) when is_list(Config) ->
     ok.
 
 implicit_inet6(Config) when is_list(Config) ->
-    ?line Hostname = ok(inet:gethostname()),
+    ?line Host = ok(inet:gethostname()),
+    ?line
+	case inet:getaddr(Host, inet6) of
+	    {ok,Addr} ->
+		?line implicit_inet6(Host, Addr);
+	    {error,Reason} ->
+		{skip,
+		 "Can not look up IPv6 address: "
+		 ++atom_to_list(Reason)}
+	end.
+
+implicit_inet6(Host, Addr) ->
     ?line Active = {active,false},
     ?line
 	case gen_udp:open(0, [inet6,Active]) of
 	    {ok,S1} ->
-		?line
-		    case inet:getaddr(Hostname, inet6) of
-			{ok,Host} ->
-			    ?line Loopback = {0,0,0,0,0,0,0,1},
-			    ?line io:format("~s ~p~n", ["Loopback",Loopback]),
-			    ?line implicit_inet6(S1, Active, Loopback),
-			    ?line ok = gen_udp:close(S1),
-			    %%
-			    ?line Localhost =
-				ok(inet:getaddr("localhost", inet6)),
-			    ?line io:format("~s ~p~n", ["localhost",Localhost]),
-			    ?line S2 =
-				ok(gen_udp:open(0, [{ip,Localhost},Active])),
-			    ?line implicit_inet6(S2, Active, Localhost),
-			    ?line ok = gen_udp:close(S2),
-			    %%
-			    ?line io:format("~s ~p~n", [Hostname,Host]),
-			    ?line S3 =
-				ok(gen_udp:open(0, [{ifaddr,Host},Active])),
-			    ?line implicit_inet6(S3, Active, Host),
-			    ?line ok = gen_udp:close(S1);
-			{error,eafnosupport} ->
-			    ?line ok = gen_udp:close(S1),
-			    {skip,"Can not look up IPv6 address"}
-		    end;
+		?line Loopback = {0,0,0,0,0,0,0,1},
+		?line io:format("~s ~p~n", ["::1",Loopback]),
+		?line implicit_inet6(S1, Active, Loopback),
+		?line ok = gen_udp:close(S1),
+		%%
+		?line Localhost = "localhost",
+		?line Localaddr = ok(inet:getaddr(Localhost, inet6)),
+		?line io:format("~s ~p~n", [Localhost,Localaddr]),
+		?line S2 = ok(gen_udp:open(0, [{ip,Localaddr},Active])),
+		?line implicit_inet6(S2, Active, Localaddr),
+		?line ok = gen_udp:close(S2),
+		%%
+		?line io:format("~s ~p~n", [Host,Addr]),
+		?line S3 = ok(gen_udp:open(0, [{ifaddr,Addr},Active])),
+		?line implicit_inet6(S3, Active, Addr),
+		?line ok = gen_udp:close(S3);
 	    _ ->
 		{skip,"IPv6 not supported"}
 	end.
@@ -480,6 +501,5 @@ implicit_inet6(S1, Active, Addr) ->
     ?line ok = gen_udp:send(S2, Addr, P1, "pong"),
     ?line {Addr,P2,"pong"} = ok(gen_udp:recv(S1, 1024)),
     ?line ok = gen_udp:close(S2).
-
 
 ok({ok,V}) -> V.

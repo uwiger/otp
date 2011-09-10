@@ -4,7 +4,7 @@
 <chapter>
   <header>
     <copyright>
-      <year>2001</year><year>2010</year>
+      <year>2001</year><year>2011</year>
       <holder>Ericsson AB. All Rights Reserved.</holder>
     </copyright>
     <legalnotice>
@@ -34,7 +34,7 @@
     <p>A good start when programming efficiently is to have knowledge about
       how much memory different data types and operations require. It is
       implementation-dependent how much memory the Erlang data types and
-      other items consume, but here are some figures for
+      other items consume, but here are some figures for the
       erts-5.2 system (OTP release R9B). (There have been no significant
       changes in R13.)</p>
 
@@ -200,7 +200,7 @@ On 64-bit architectures: 4 words for a reference from the current local node, an
       <seealso marker="#ports">the maximum number of Erlang ports</seealso>
        available, and operating system specific settings and limits.</item>
       <tag><em>Number of arguments to a function or fun</em></tag>
-      <item>256</item>
+      <item>255</item>
     </taglist>
   </section>
 </chapter>

@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 1999-2010. All Rights Reserved.
+%% Copyright Ericsson AB 1999-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -28,6 +28,7 @@
 %-export([sha256/1, sha256_init/0, sha256_update/2, sha256_final/1]).
 %-export([sha512/1, sha512_init/0, sha512_update/2, sha512_final/1]).
 -export([md5_mac/2, md5_mac_96/2, sha_mac/2, sha_mac_96/2]).
+-export([hmac_init/2, hmac_update/2, hmac_final/1, hmac_final_n/2]).
 -export([des_cbc_encrypt/3, des_cbc_decrypt/3, des_cbc_ivec/1]).
 -export([des_ecb_encrypt/2, des_ecb_decrypt/2]).
 -export([des3_cbc_encrypt/5, des3_cbc_decrypt/5]).
@@ -46,12 +47,14 @@
 -export([rsa_private_encrypt/3, rsa_public_decrypt/3]).
 -export([dh_generate_key/1, dh_generate_key/2, dh_compute_key/3]).
 -export([rand_bytes/1, rand_bytes/3, rand_uniform/2]).
+-export([strong_rand_bytes/1, strong_rand_mpint/3]).
 -export([mod_exp/3, mpint/1, erlint/1]).
 %% -export([idea_cbc_encrypt/3, idea_cbc_decrypt/3]).
 -export([aes_cbc_128_encrypt/3, aes_cbc_128_decrypt/3]).
 -export([aes_cbc_256_encrypt/3, aes_cbc_256_decrypt/3]).
 -export([aes_cbc_ivec/1]).
 -export([aes_ctr_encrypt/3, aes_ctr_decrypt/3]).
+-export([aes_ctr_stream_init/2, aes_ctr_stream_encrypt/2, aes_ctr_stream_decrypt/2]).
 
 -export([dh_generate_parameters/2, dh_check/1]). %% Testing see below
 
@@ -63,11 +66,14 @@
 %% 		    sha512, sha512_init, sha512_update, sha512_final,
 		    md5_mac,  md5_mac_96,
 		    sha_mac,  sha_mac_96,
+                    sha_mac_init, sha_mac_update, sha_mac_final,
 		    des_cbc_encrypt, des_cbc_decrypt,
 		    des_ecb_encrypt, des_ecb_decrypt,
 		    des_ede3_cbc_encrypt, des_ede3_cbc_decrypt,
 		    aes_cfb_128_encrypt, aes_cfb_128_decrypt,
 		    rand_bytes,
+		    strong_rand_bytes,
+		    strong_rand_mpint,
 		    rand_uniform,
 		    mod_exp,
 		    dss_verify,dss_sign,
@@ -82,6 +88,7 @@
 		    %% idea_cbc_encrypt, idea_cbc_decrypt,
 		    aes_cbc_256_encrypt, aes_cbc_256_decrypt,
             aes_ctr_encrypt, aes_ctr_decrypt,
+                    aes_ctr_stream_init, aes_ctr_stream_encrypt, aes_ctr_stream_decrypt,
 		    info_lib]).
 
 -type rsa_digest_type() :: 'md5' | 'sha'.
@@ -214,6 +221,19 @@ sha_final(_Context) -> ?nif_stub.
 %%
 
 %%
+%%  HMAC (multiple hash options)
+%%
+-spec hmac_init(atom(), iodata()) -> binary().                             
+-spec hmac_update(binary(), iodata()) -> binary().
+-spec hmac_final(binary()) -> binary().                             
+-spec hmac_final_n(binary(), integer()) -> binary().                             
+
+hmac_init(_Type, _Key) -> ?nif_stub.
+hmac_update(_Context, _Data) -> ? nif_stub.
+hmac_final(_Context) -> ? nif_stub.
+hmac_final_n(_Context, _HashLen) -> ? nif_stub.
+     
+%%
 %%  MD5_MAC
 %%
 -spec md5_mac(iodata(), iodata()) -> binary().
@@ -240,7 +260,7 @@ sha_mac_96(Key, Data) ->
     sha_mac_n(Key,Data,12).
 
 sha_mac_n(_Key,_Data,_MacSz) -> ?nif_stub.
-    
+
 %%
 %% CRYPTO FUNCTIONS
 %%
@@ -361,11 +381,31 @@ aes_cfb_128_crypt(_Key, _IVec, _Data, _IsEncrypt) -> ?nif_stub.
 %% RAND - pseudo random numbers using RN_ functions in crypto lib
 %%
 -spec rand_bytes(non_neg_integer()) -> binary().
+-spec strong_rand_bytes(non_neg_integer()) -> binary().
 -spec rand_uniform(crypto_integer(), crypto_integer()) ->
 			  crypto_integer().
+-spec strong_rand_mpint(Bits::non_neg_integer(),
+			Top::-1..1,
+			Bottom::0..1) -> binary().
 
 rand_bytes(_Bytes) -> ?nif_stub.
+
+strong_rand_bytes(Bytes) ->
+    case strong_rand_bytes_nif(Bytes) of
+        false -> erlang:error(low_entropy);
+        Bin -> Bin
+    end.
+strong_rand_bytes_nif(_Bytes) -> ?nif_stub.
+
 rand_bytes(_Bytes, _Topmask, _Bottommask) -> ?nif_stub.
+
+strong_rand_mpint(Bits, Top, Bottom) -> 
+    case strong_rand_mpint_nif(Bits,Top,Bottom) of
+        false -> erlang:error(low_entropy);
+        Bin -> Bin
+    end.
+strong_rand_mpint_nif(_Bits, _Top, _Bottom) -> ?nif_stub.
+
 
 rand_uniform(From,To) when is_binary(From), is_binary(To) ->
     case rand_uniform_nif(From,To) of
@@ -555,6 +595,22 @@ aes_cbc_ivec(Data) when is_list(Data) ->
 aes_ctr_encrypt(_Key, _IVec, _Data) -> ?nif_stub.
 aes_ctr_decrypt(_Key, _IVec, _Cipher) -> ?nif_stub.
 
+%%
+%% AES - in counter mode (CTR) with state maintained for multi-call streaming 
+%%
+-type ctr_state() :: { iodata(), binary(), binary(), integer() }.
+
+-spec aes_ctr_stream_init(iodata(), binary()) -> ctr_state().
+-spec aes_ctr_stream_encrypt(ctr_state(), binary()) ->
+				 { ctr_state(), binary() }.
+-spec aes_ctr_stream_decrypt(ctr_state(), binary()) ->
+				 { ctr_state(), binary() }.
+ 
+aes_ctr_stream_init(Key, IVec) -> 
+    {Key, IVec, << 0:128 >>, 0}.
+aes_ctr_stream_encrypt({_Key, _IVec, _ECount, _Num}=_State, _Data) -> ?nif_stub.
+aes_ctr_stream_decrypt({_Key, _IVec, _ECount, _Num}=_State, _Cipher) -> ?nif_stub.
+     
 %%
 %% XOR - xor to iolists and return a binary
 %% NB doesn't check that they are the same size, just concatenates

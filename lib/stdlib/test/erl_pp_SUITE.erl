@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2006-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2006-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -30,23 +30,25 @@
 -define(privdir, "erl_pp_SUITE_priv").
 -define(t, test_server).
 -else.
--include("test_server.hrl").
+-include_lib("test_server/include/test_server.hrl").
 -define(datadir, ?config(data_dir, Config)).
 -define(privdir, ?config(priv_dir, Config)).
 -endif.
 
--export([all/1, init_per_testcase/2, fin_per_testcase/2]).
+-export([all/0, suite/0,groups/0,init_per_suite/1, end_per_suite/1, 
+	 init_per_group/2,end_per_group/2, 
+	 init_per_testcase/2, end_per_testcase/2]).
 
--export([expr/1, func/1, call/1, recs/1, try_catch/1, if_then/1,
-            receive_after/1, bits/1, head_tail/1, package/1,
-            cond1/1, block/1, case1/1, ops/1, messages/1,
-	    old_mnemosyne_syntax/1,
-         attributes/1, import_export/1, misc_attrs/1,
-         hook/1,
-         neg_indent/1,
-         tickets/1,
-            otp_6321/1, otp_6911/1, otp_6914/1, otp_8150/1, otp_8238/1,
-            otp_8473/1, otp_8522/1, otp_8567/1, otp_8664/1]).
+-export([ func/1, call/1, recs/1, try_catch/1, if_then/1,
+	  receive_after/1, bits/1, head_tail/1, package/1,
+	  cond1/1, block/1, case1/1, ops/1, messages/1,
+	  old_mnemosyne_syntax/1,
+	  import_export/1, misc_attrs/1,
+	  hook/1,
+	  neg_indent/1,
+
+	  otp_6321/1, otp_6911/1, otp_6914/1, otp_8150/1, otp_8238/1,
+	  otp_8473/1, otp_8522/1, otp_8567/1, otp_8664/1, otp_9147/1]).
 
 %% Internal export.
 -export([ehook/6]).
@@ -58,17 +60,40 @@ init_per_testcase(_Case, Config) ->
     ?line Dog = ?t:timetrap(?default_timeout),
     [{watchdog, Dog} | Config].
 
-fin_per_testcase(_Case, _Config) ->
+end_per_testcase(_Case, _Config) ->
     Dog = ?config(watchdog, _Config),
     test_server:timetrap_cancel(Dog),
     ok.
 
-all(suite) ->
-    [expr, attributes, hook, neg_indent, tickets].
+suite() -> [{ct_hooks,[ts_install_cth]}].
 
-expr(suite) ->
-    [func, call, recs, try_catch, if_then, receive_after, bits, head_tail,
-     package, cond1, block, case1, ops, messages, old_mnemosyne_syntax].
+all() -> 
+    [{group, expr}, {group, attributes}, hook, neg_indent,
+     {group, tickets}].
+
+groups() -> 
+    [{expr, [],
+      [func, call, recs, try_catch, if_then, receive_after,
+       bits, head_tail, package, cond1, block, case1, ops,
+       messages, old_mnemosyne_syntax]},
+     {attributes, [], [misc_attrs, import_export]},
+     {tickets, [],
+      [otp_6321, otp_6911, otp_6914, otp_8150, otp_8238,
+       otp_8473, otp_8522, otp_8567, otp_8664, otp_9147]}].
+
+init_per_suite(Config) ->
+    Config.
+
+end_per_suite(_Config) ->
+    ok.
+
+init_per_group(_GroupName, Config) ->
+    Config.
+
+end_per_group(_GroupName, Config) ->
+    Config.
+
+
 
 func(suite) ->
     [];
@@ -564,8 +589,6 @@ old_mnemosyne_syntax(Config) when is_list(Config) ->
     ok.
 
 
-attributes(suite) ->
-    [misc_attrs, import_export].
 
 import_export(suite) ->
     [];
@@ -763,9 +786,6 @@ neg_indent(Config) when is_list(Config) ->
 
     ok.
 
-tickets(suite) ->
-    [otp_6321, otp_6911, otp_6914, otp_8150, otp_8238, otp_8473, otp_8522,
-     otp_8567, otp_8664].
 
 otp_6321(doc) ->
     "OTP_6321. Bug fix of exprs().";
@@ -1027,6 +1047,26 @@ otp_8664(Config) when is_list(Config) ->
 
     ok.
 
+otp_9147(doc) ->
+    "OTP_9147. Create well-formed types when adding 'undefined'.";
+otp_9147(suite) -> [];
+otp_9147(Config) when is_list(Config) ->
+    FileName = filename('otp_9147.erl', Config),
+    C1 = <<"-module(otp_9147).\n"
+           "-export_type([undef/0]).\n"
+           "-record(undef, {f1 :: F1 :: a | b}).\n"
+           "-type undef() :: #undef{}.\n">>,
+    ?line ok = file:write_file(FileName, C1),
+    ?line {ok, _, []} = 
+       compile:file(FileName, [return,'P',{outdir,?privdir}]),
+    PFileName = filename('otp_9147.P', Config),
+    ?line {ok, Bin} = file:read_file(PFileName),
+    %% The parentheses around "F1 :: a | b" are new (bugfix).
+    ?line true = 
+        lists:member("-record(undef,{f1 :: undefined | (F1 :: a | b)}).",
+                     string:tokens(binary_to_list(Bin), "\n")),
+    ok.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 compile(Config, Tests) ->
@@ -1121,7 +1161,7 @@ parse_forms2(String, Cont0, Line, Forms) ->
         {done, {ok, Tokens, EndLine}, Chars} ->
             {ok, Form} = erl_parse:parse_form(Tokens),
             parse_forms2(Chars, [], EndLine, [Form | Forms]);
-        {more, Cont} when element(3, Cont) =:= [] ->
+        {more, Cont} when element(4, Cont) =:= [] ->
             %% extra spaces after forms...
             parse_forms2([], Cont, Line, Forms);
         {more, Cont} ->

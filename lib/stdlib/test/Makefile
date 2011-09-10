@@ -133,9 +133,9 @@ release_spec: opt
 
 release_tests_spec: make_emakefile
 	$(INSTALL_DIR) $(RELSYSDIR)
-	$(INSTALL_DATA) stdlib.spec stdlib.spec.vxworks $(EMAKEFILE) \
+	$(INSTALL_DATA) stdlib.spec $(EMAKEFILE) \
 		$(ERL_FILES) $(COVERFILE) $(RELSYSDIR)
-	chmod -f -R u+w $(RELSYSDIR)
+	chmod -R u+w $(RELSYSDIR)
 	@tar cf - *_SUITE_data | (cd $(RELSYSDIR); tar xf -)
 
 release_docs_spec:

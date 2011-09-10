@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2003-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2003-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -32,10 +32,12 @@
 
 -export([close_connections/0]).
 
--export([save_suite_data/3, save_suite_data/2, read_suite_data/1, 
+-export([save_suite_data/3, save_suite_data/2,
+	 save_suite_data_async/3, save_suite_data_async/2,
+	 read_suite_data/1, 
 	 delete_suite_data/0, delete_suite_data/1, match_delete_suite_data/1,
 	 delete_testdata/0, delete_testdata/1, set_testdata/1, get_testdata/1,
-	 update_testdata/2]).
+	 set_testdata_async/1, update_testdata/2]).
 
 -export([override_silence_all_connections/0, override_silence_connections/1, 
 	 get_overridden_silenced_connections/0, 
@@ -94,7 +96,8 @@ start(Mode,LogDir) ->
 	    Pid = spawn_link(fun() -> do_start(S,Mode,LogDir) end),
 	    receive 
 		{Pid,started} -> Pid;
-		{Pid,Error} -> exit(Error)
+		{Pid,Error} -> exit(Error);
+		{_Ref,{Pid,Error}} -> exit(Error)
 	    end;
 	Pid ->
 	    case get_mode() of
@@ -159,11 +162,20 @@ do_start(Parent,Mode,LogDir) ->
 	    ok
     end,
     {StartTime,TestLogDir} = ct_logs:init(Mode),
+
     ct_event:notify(#event{name=test_start,
 			   node=node(),
 			   data={StartTime,
 				 lists:flatten(TestLogDir)}}),
-    Parent ! {self(),started},
+    %% Initialize ct_hooks
+    case catch ct_hooks:init(Opts) of
+	ok ->
+	    Parent ! {self(),started};
+	{_,CTHReason} ->
+	    ct_logs:tc_print('Suite Callback',CTHReason,[]),
+	    self() ! {{stop,{self(),{user_error,CTHReason}}},
+		      {Parent,make_ref()}}
+    end,
     loop(Mode,[],StartDir).
 
 create_table(TableName,KeyPos) ->
@@ -182,11 +194,18 @@ read_opts() ->
 	    {error,{bad_installation,Error}}
     end.
 
+
 save_suite_data(Key, Value) ->
     call({save_suite_data, {Key, undefined, Value}}).
 
 save_suite_data(Key, Name, Value) ->
     call({save_suite_data, {Key, Name, Value}}).
+
+save_suite_data_async(Key, Value) ->
+    save_suite_data_async(Key, undefined, Value).
+
+save_suite_data_async(Key, Name, Value) ->
+    cast({save_suite_data, {Key, Name, Value}}).
 
 read_suite_data(Key) ->
     call({read_suite_data, Key}).
@@ -211,6 +230,9 @@ update_testdata(Key, Fun) ->
 
 set_testdata(TestData) ->
     call({set_testdata, TestData}).
+
+set_testdata_async(TestData) ->
+    cast({set_testdata, TestData}).
 
 get_testdata(Key) ->
     call({get_testdata, Key}).
@@ -268,6 +290,9 @@ loop(Mode,TestData,StartDir) ->
 	    TestData1 = lists:keydelete(Key,1,TestData),
 	    return(From,ok),
 	    loop(Mode,[New|TestData1],StartDir);
+	{{get_testdata, all}, From} ->
+	    return(From, TestData),
+	    loop(From, TestData, StartDir);
 	{{get_testdata,Key},From} ->
 	    case lists:keysearch(Key,1,TestData) of
 		{value,{Key,Val}} ->
@@ -294,20 +319,27 @@ loop(Mode,TestData,StartDir) ->
 	{reset_cwd,From} ->
 	    return(From,file:set_cwd(StartDir)),
 	    loop(From,TestData,StartDir);
-	{{stop,How},From} ->
+	{{stop,Info},From} ->
 	    Time = calendar:local_time(),
 	    ct_event:sync_notify(#event{name=test_done,
 					node=node(),
 					data=Time}),
+	    Callbacks = ets:lookup_element(?suite_table,
+					   ct_hooks,
+					   #suite_data.value),
+	    ct_hooks:terminate(Callbacks),
 	    close_connections(ets:tab2list(?conn_table)),
 	    ets:delete(?conn_table),
 	    ets:delete(?board_table),
 	    ets:delete(?suite_table),
-	    ct_logs:close(How),
+	    ct_logs:close(Info),
 	    ct_event:stop(),
 	    ct_config:stop(),
 	    file:set_cwd(StartDir),
-	    return(From,ok);
+	    return(From, Info);
+	{Ref, _Msg} when is_reference(Ref) ->
+	    %% This clause is used when doing cast operations.
+	    loop(Mode,TestData,StartDir);
 	{get_mode,From} ->
 	    return(From,Mode),
 	    loop(Mode,TestData,StartDir);
@@ -507,16 +539,16 @@ reset_silent_connections() ->
     
 
 %%%-----------------------------------------------------------------
-%%% @spec stop(How) -> ok
+%%% @spec stop(Info) -> ok
 %%%
 %%% @doc Stop the ct_util_server and close all existing connections
 %%% (tool-internal use only).
 %%%
 %%% @see ct
-stop(How) ->
+stop(Info) ->
     case whereis(ct_util_server) of
 	undefined -> ok;
-	_ -> call({stop,How})
+	_ -> call({stop,Info})
     end.
 
 %%%-----------------------------------------------------------------
@@ -712,6 +744,9 @@ call(Msg) ->
 
 return({To,Ref},Result) ->
     To ! {Ref, Result}.
+
+cast(Msg) ->
+    ct_util_server ! {Msg, {ct_util_server, make_ref()}}.
 
 seconds(T) ->
     test_server:seconds(T).

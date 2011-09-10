@@ -4,7 +4,7 @@
 <chapter>
   <header>
     <copyright>
-      <year>2004</year><year>2010</year>
+      <year>2004</year><year>2011</year>
       <holder>Ericsson AB. All Rights Reserved.</holder>
     </copyright>
     <legalnotice>
@@ -28,6 +28,86 @@
     <rev>%VSN%</rev>
     <file>notes.xml</file>
   </header>
+
+<section><title>Ssh 2.0.7</title>
+    <section><title>Fixed Bugs and Malfunctions</title>
+      <list>
+        <item>
+          <p>
+            An unexpected message would crash the ssh_connection_handler and close
+            the connection. Now an error message is generated instead.</p>
+          <p>
+            Own Id: OTP-9273</p>
+        </item>
+      </list>
+    </section>
+</section>
+
+<section><title>Ssh 2.0.6</title>
+    <section><title>Fixed Bugs and Malfunctions</title>
+      <list>
+        <item>
+          <p>
+            A memory leak has been fixed. I.e. per terminated connection the size of
+            a pid and the length of a user name string was not cleared.</p>
+          <p>
+            Own Id: OTP-9232</p>
+        </item>
+      </list>
+    </section>
+</section>
+
+<section><title>Ssh 2.0.5</title>
+    <section><title>Improvements and New Features</title>
+      <list>
+        <item>
+          <p>
+            Strengthened random number generation. (Thanks to Geoff Cant)</p>
+          <p>
+            Own Id: OTP-9225</p>
+        </item>
+      </list>
+    </section>
+</section>
+
+<section><title>Ssh 2.0.4</title>
+    <section><title>Fixed Bugs and Malfunctions</title>
+      <list>
+        <item>
+          <p>In some cases SSH returned {error, normal} when a channel was terminated
+             unexpectedly. This has now been changed to {error, channel_closed}.</p>
+          <p>
+            *** POTENTIAL INCOMPATIBILITY ***</p>
+          <p>
+            Own Id: OTP-8987 Aux Id: seq11748</p>
+        </item>
+        <item>
+          <p>
+            SSH did not handle the error reason enetunreach
+            when trying to open a IPv6 connection.</p>
+          <p>
+            Own Id: OTP-9031</p>
+        </item>
+      </list>
+    </section>
+    <section><title>Improvements and New Features</title>
+      <list>
+        <item>
+          <p>
+            It is now possible to use SSH to sign and verify binary data.</p>
+          <p>
+            Own Id: OTP-8986</p>
+        </item>
+        <item>
+          <p>
+            SSH now ensures that the .ssh directory exists before trying
+            to access files located in that directory.</p>
+          <p>
+            Own Id: OTP-9010</p>
+        </item>
+      </list>
+    </section>
+</section>
 
 <section><title>Ssh 2.0.3</title>
     <section><title>Fixed Bugs and Malfunctions</title>

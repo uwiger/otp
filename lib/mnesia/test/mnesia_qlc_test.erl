@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2004-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2004-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -22,7 +22,7 @@
 
 -compile(export_all).
 
--export([all/1]).
+-export([all/0,groups/0,init_per_group/2,end_per_group/2]).
 
 -include("mnesia_test_lib.hrl").
 -include_lib("stdlib/include/qlc.hrl"). 
@@ -31,20 +31,34 @@ init_per_testcase(Func, Conf) ->
     setup(Conf),
     mnesia_test_lib:init_per_testcase(Func, Conf).
 
-fin_per_testcase(Func, Conf) ->
-    mnesia_test_lib:fin_per_testcase(Func, Conf).
+end_per_testcase(Func, Conf) ->
+    mnesia_test_lib:end_per_testcase(Func, Conf).
 
-all(doc) ->
-    ["Test that the qlc mnesia interface works as expected."];
-all(suite) -> 
+all() -> 
     case code:which(qlc) of
 	non_existing -> [];
-	_ -> 
-	    all_qlc()
+	_ -> all_qlc()
     end.
 
-all_qlc() ->
-    [dirty, trans, frag, info, mnesia_down].
+groups() -> 
+    [{dirty, [],
+      [dirty_nice_ram_copies, dirty_nice_disc_copies,
+       dirty_nice_disc_only_copies]},
+     {trans, [],
+      [trans_nice_ram_copies, trans_nice_disc_copies,
+       trans_nice_disc_only_copies, {group, atomic}]},
+     {atomic, [], [atomic_eval]}].
+
+init_per_group(_GroupName, Config) ->
+    Config.
+
+end_per_group(_GroupName, Config) ->
+    Config.
+
+
+all_qlc() -> 
+    [{group, dirty}, {group, trans}, frag, info,
+     mnesia_down].
 
 init_testcases(Type,Config) ->
     Nodes = [N1,N2] = ?acquire_nodes(2, Config),
@@ -56,13 +70,10 @@ init_testcases(Type,Config) ->
 	    end,
     All = fun() -> [Write(Id) || Id <- lists:seq(1,10)], ok end,
     ?match({atomic, ok}, mnesia:sync_transaction(All)),
+    ?match({atomic, [{b, {b,100-1}, 1}]}, mnesia:transaction(fun() -> mnesia:read({b, {b, 99}}) end)),
     Nodes.
 
 %% Test cases       
-dirty(suite) -> 
-    [dirty_nice_ram_copies,
-     dirty_nice_disc_copies,
-     dirty_nice_disc_only_copies].
 
 dirty_nice_ram_copies(Setup) -> dirty_nice(Setup,ram_copies).
 dirty_nice_disc_copies(Setup) -> dirty_nice(Setup,disc_copies).
@@ -109,12 +120,6 @@ dirty_nice(Config, Type) when is_list(Config) ->
     end,
     ?verify_mnesia(Ns, []).
 
-trans(suite) -> 
-    [trans_nice_ram_copies,
-     trans_nice_disc_copies,
-     trans_nice_disc_only_copies,
-     atomic
-    ].
 
 trans_nice_ram_copies(Setup) -> trans_nice(Setup,ram_copies).
 trans_nice_disc_copies(Setup) -> trans_nice(Setup,disc_copies).
@@ -182,9 +187,7 @@ recs() ->
       "-record(b, {k,v}). "
       "-record(k, {t,v}). "
      >>.
-
-atomic(suite) -> [atomic_eval];
-atomic(doc) -> []. 
+ 
 
 atomic_eval(suite) -> [];
 atomic_eval(doc) -> []; 

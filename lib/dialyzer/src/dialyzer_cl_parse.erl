@@ -2,7 +2,7 @@
 %%-----------------------------------------------------------------------
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2006-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2006-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -20,10 +20,8 @@
 
 -module(dialyzer_cl_parse).
 
-%% Avoid warning for local function error/1 clashing with autoimported BIF.
--compile({no_auto_import,[error/1]}).
--export([start/0]).
--export([collect_args/1]).	% used also by typer_options.erl
+-export([start/0, get_lib_dir/1]).
+-export([collect_args/1]).	% used also by typer
 
 -include("dialyzer.hrl").
 
@@ -32,8 +30,10 @@
 -type dial_cl_parse_ret() :: {'check_init', #options{}}
                            | {'plt_info', #options{}}
                            | {'cl', #options{}}
-                           | {{'gui', 'gs' | 'wx'}, #options{}} 
+                           | {{'gui', 'gs' | 'wx'}, #options{}}
                            | {'error', string()}.
+
+-type deep_string() :: string() | [deep_string()].
 
 %%-----------------------------------------------------------------------
 
@@ -55,7 +55,7 @@ cl(["--add_to_plt"|T]) ->
   put(dialyzer_options_analysis_type, plt_add),
   cl(T);
 cl(["--apps"|T]) ->
-  T1 = get_lib_dir(T, []),
+  T1 = get_lib_dir(T),
   {Args, T2} = collect_args(T1),
   append_var(dialyzer_options_files_rec, Args),
   cl(T2);
@@ -82,7 +82,7 @@ cl(["--get_warnings"|T]) ->
   put(dialyzer_options_get_warnings, true),
   cl(T);
 cl(["-D"|_]) ->
-  error("No defines specified after -D");
+  cl_error("No defines specified after -D");
 cl(["-D"++Define|T]) ->
   Def = re:split(Define, "=", [{return, list}]),
   append_defines(Def),
@@ -92,7 +92,7 @@ cl(["-h"|_]) ->
 cl(["--help"|_]) ->
   help_message();
 cl(["-I"]) ->
-  error("no include directory specified after -I");
+  cl_error("no include directory specified after -I");
 cl(["-I", Dir|T]) ->
   append_include(Dir),
   cl(T);
@@ -113,14 +113,14 @@ cl(["--com"++_|T]) ->
   NewTail = command_line(T),
   cl(NewTail);
 cl(["--output"]) ->
-  error("No outfile specified");
+  cl_error("No outfile specified");
 cl(["-o"]) ->
-  error("No outfile specified");
+  cl_error("No outfile specified");
 cl(["--output",Output|T]) ->
   put(dialyzer_output, Output),
   cl(T);
 cl(["--output_plt"]) ->
-  error("No outfile specified for --output_plt");
+  cl_error("No outfile specified for --output_plt");
 cl(["--output_plt",Output|T]) ->
   put(dialyzer_output_plt, Output),
   cl(T);
@@ -133,10 +133,13 @@ cl(["-o"++Output|T]) ->
 cl(["--raw"|T]) ->
   put(dialyzer_output_format, raw),
   cl(T);
+cl(["--fullpath"|T]) ->
+  put(dialyzer_filename_opt, fullpath),
+  cl(T);
 cl(["-pa", Path|T]) ->
   case code:add_patha(Path) of
     true -> cl(T);
-    {error, _} -> error("Bad directory for -pa: "++Path)
+    {error, _} -> cl_error("Bad directory for -pa: " ++ Path)
   end;
 cl(["--plt"]) ->
   error("No plt specified for --plt");
@@ -171,14 +174,14 @@ cl(["--verbose"|T]) ->
   put(dialyzer_options_report_mode, verbose),
   cl(T);
 cl(["-W"|_]) ->
-  error("-W given without warning");
+  cl_error("-W given without warning");
 cl(["-Whelp"|_]) ->
   help_warnings();
 cl(["-W"++Warn|T]) ->
   append_var(dialyzer_warnings, [list_to_atom(Warn)]),
   cl(T);
 cl(["--dump_callgraph"]) ->
-  error("No outfile specified for --dump_callgraph");
+  cl_error("No outfile specified for --dump_callgraph");
 cl(["--dump_callgraph", File|T]) ->
   put(dialyzer_callgraph_file, File),
   cl(T);
@@ -194,7 +197,7 @@ cl([H|_] = L) ->
       NewTail = command_line(L),
       cl(NewTail);
     false ->
-      error("Unknown option: " ++ H)
+      cl_error("Unknown option: " ++ H)
   end;
 cl([]) ->
   {RetTag, Opts} =
@@ -213,7 +216,7 @@ cl([]) ->
 	end
     end,
   case dialyzer_options:build(Opts) of
-    {error, Msg} -> error(Msg);
+    {error, Msg} -> cl_error(Msg);
     OptsRecord -> {RetTag, OptsRecord}
   end.
 
@@ -229,7 +232,9 @@ command_line(T0) ->
   end,
   T.
 
-error(Str) ->
+-spec cl_error(deep_string()) -> no_return().
+
+cl_error(Str) ->
   Msg = lists:flatten(Str),
   throw({dialyzer_cl_parse_error, Msg}).
 
@@ -243,6 +248,7 @@ init() ->
   put(dialyzer_options_defines,   DefaultOpts#options.defines),
   put(dialyzer_options_files,     DefaultOpts#options.files),
   put(dialyzer_output_format,     formatted),
+  put(dialyzer_filename_opt,      basename),
   put(dialyzer_options_check_plt, DefaultOpts#options.check_plt),
   ok.
 
@@ -281,6 +287,7 @@ cl_options() ->
    {files_rec, get(dialyzer_options_files_rec)},
    {output_file, get(dialyzer_output)},
    {output_format, get(dialyzer_output_format)},
+   {filename_opt, get(dialyzer_filename_opt)},
    {analysis_type, get(dialyzer_options_analysis_type)},
    {get_warnings, get(dialyzer_options_get_warnings)},
    {callgraph_file, get(dialyzer_callgraph_file)}
@@ -298,6 +305,11 @@ common_options() ->
    {check_plt, get(dialyzer_options_check_plt)}].
 
 %%-----------------------------------------------------------------------
+
+-spec get_lib_dir([string()]) -> [string()].
+
+get_lib_dir(Apps) ->
+  get_lib_dir(Apps, []).
 
 get_lib_dir([H|T], Acc) ->
   NewElem =
@@ -322,10 +334,14 @@ get_plts([], Acc) -> {lists:reverse(Acc), []}.
 
 %%-----------------------------------------------------------------------
 
+-spec help_warnings() -> no_return().
+
 help_warnings() ->
   S = warning_options_msg(),
   io:put_chars(S),
   erlang:halt(?RET_NOTHING_SUSPICIOUS).
+
+-spec help_message() -> no_return().
 
 help_message() ->
   S = "Usage: dialyzer [--help] [--version] [--shell] [--quiet] [--verbose]
@@ -335,7 +351,7 @@ help_message() ->
                 [--apps applications] [-o outfile]
 		[--build_plt] [--add_to_plt] [--remove_from_plt]
 		[--check_plt] [--no_check_plt] [--plt_info] [--get_warnings]
-                [--no_native]
+                [--no_native] [--fullpath]
 Options:
   files_or_dirs (for backwards compatibility also as: -c files_or_dirs)
       Use Dialyzer from the command line to detect defects in the
@@ -437,6 +453,8 @@ Options:
       Bypass the native code compilation of some key files that Dialyzer
       heuristically performs when dialyzing many files; this avoids the
       compilation time but it may result in (much) longer analysis time.
+  --fullpath
+      Display the full path names of files for which warnings are emitted.
   --gui
       Use the gs-based GUI.
   --wx
@@ -484,13 +502,13 @@ warning_options_msg() ->
      Include warnings about behaviour callbacks which drift from the published
      recommended interfaces.
   -Wunderspecs ***
-     Warn about underspecified functions 
+     Warn about underspecified functions
      (those whose -spec is strictly more allowing than the success typing).
 
 The following options are also available but their use is not recommended:
 (they are mostly for Dialyzer developers and internal debugging)
   -Woverspecs ***
-     Warn about overspecified functions 
+     Warn about overspecified functions
      (those whose -spec is strictly less allowing than the success typing).
   -Wspecdiffs ***
      Warn when the -spec is different than the success typing.

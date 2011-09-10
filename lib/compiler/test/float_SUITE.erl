@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2002-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2002-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -17,13 +17,34 @@
 %% %CopyrightEnd%
 %%
 -module(float_SUITE).
--export([all/1,pending/1,bif_calls/1,math_functions/1,mixed_float_and_int/1]).
+-export([all/0, suite/0,groups/0,init_per_suite/1, end_per_suite/1, 
+	 init_per_group/2,end_per_group/2,
+	 pending/1,bif_calls/1,math_functions/1,mixed_float_and_int/1]).
 
--include("test_server.hrl").
+-include_lib("test_server/include/test_server.hrl").
 
-all(suite) ->
+suite() -> [{ct_hooks,[ts_install_cth]}].
+
+all() -> 
     test_lib:recompile(?MODULE),
-    [pending,bif_calls,math_functions,mixed_float_and_int].
+    [pending, bif_calls, math_functions,
+     mixed_float_and_int].
+
+groups() -> 
+    [].
+
+init_per_suite(Config) ->
+    Config.
+
+end_per_suite(_Config) ->
+    ok.
+
+init_per_group(_GroupName, Config) ->
+    Config.
+
+end_per_group(_GroupName, Config) ->
+    Config.
+
 
 %% Thanks to Tobias Lindahl <tobias.lindahl@it.uu.se>
 %% Shows the effect of pending exceptions on the x86.

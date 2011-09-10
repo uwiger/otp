@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 1997-2009. All Rights Reserved.
+%% Copyright Ericsson AB 1997-2011. All Rights Reserved.
 %% 
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -27,18 +27,18 @@
 %%% - queueing
 
 -module(driver_SUITE).
--export([all/1,
+-export([all/0, suite/0,groups/0,init_per_suite/1, 
+	 end_per_suite/1, init_per_group/2,end_per_group/2,
 	 init_per_testcase/2,
-	 fin_per_testcase/2,
-	 end_per_suite/1,
+	 end_per_testcase/2,
 	 outputv_echo/1,
-	 timer/1,
+	
 	 timer_measure/1,
 	 timer_cancel/1,
 	 timer_change/1,
 	 timer_delay/1,
 	 queue_echo/1,
-	 fun_to_port/1,
+	 outputv_errors/1,
 	 driver_unloaded/1,
 	 io_ready_exit/1,
 	 use_fallback_pollset/1,
@@ -51,7 +51,7 @@
 	 'driver_system_info_ver1.1'/1,
 	 driver_system_info_current_ver/1,
 	 driver_monitor/1,
-	 ioq_exit/1,
+	
 	 ioq_exit_ready_input/1,
 	 ioq_exit_ready_output/1,
 	 ioq_exit_timeout/1,
@@ -74,11 +74,12 @@
 	 missing_callbacks/1,
 	 smp_select/1,
 	 driver_select_use/1,
-	 thread_mseg_alloc_cache_clean/1]).
+	 thread_mseg_alloc_cache_clean/1,
+	 otp_9302/1]).
 
 -export([bin_prefix/2]).
 
--include("test_server.hrl").
+-include_lib("test_server/include/test_server.hrl").
 
 
 % First byte in communication with the timer driver
@@ -120,79 +121,134 @@ init_per_testcase(Case, Config) when is_atom(Case), is_list(Config) ->
     ?line 0 = erts_debug:get_internal_state(check_io_debug),
     [{watchdog, Dog},{testcase, Case}|Config].
 
-fin_per_testcase(Case, Config) ->
+end_per_testcase(Case, Config) ->
     Dog = ?config(watchdog, Config),
-    erlang:display({fin_per_testcase, Case}),
+    erlang:display({end_per_testcase, Case}),
     ?line 0 = erts_debug:get_internal_state(check_io_debug),
     ?t:timetrap_cancel(Dog).
+
+suite() -> [{ct_hooks,[ts_install_cth]}].
+
+all() -> 
+    [outputv_errors, outputv_echo, queue_echo, {group, timer},
+     driver_unloaded, io_ready_exit, use_fallback_pollset,
+     bad_fd_in_pollset, driver_event, fd_change,
+     steal_control, otp_6602, 'driver_system_info_ver1.0',
+     'driver_system_info_ver1.1',
+     driver_system_info_current_ver, driver_monitor,
+     {group, ioq_exit}, zero_extended_marker_garb_drv,
+     invalid_extended_marker_drv, larger_major_vsn_drv,
+     larger_minor_vsn_drv, smaller_major_vsn_drv,
+     smaller_minor_vsn_drv, peek_non_existing_queue,
+     otp_6879, caller, many_events, missing_callbacks,
+     smp_select, driver_select_use,
+     thread_mseg_alloc_cache_clean,
+     otp_9302].
+
+groups() -> 
+    [{timer, [],
+      [timer_measure, timer_cancel, timer_delay,
+       timer_change]},
+     {ioq_exit, [],
+      [ioq_exit_ready_input, ioq_exit_ready_output,
+       ioq_exit_timeout, ioq_exit_ready_async, ioq_exit_event,
+       ioq_exit_ready_input_async, ioq_exit_ready_output_async,
+       ioq_exit_timeout_async, ioq_exit_event_async]}].
+
+init_per_suite(Config) ->
+    Config.
 
 end_per_suite(_Config) ->
     catch erts_debug:set_internal_state(available_internal_state, false).
 
-all(suite) ->
-    [
-     fun_to_port,
-     outputv_echo,
-     queue_echo,
-     timer,
-     driver_unloaded,
-     io_ready_exit,
-     use_fallback_pollset,
-     bad_fd_in_pollset,
-     driver_event,
-     fd_change,
-     steal_control,
-     otp_6602,
-     'driver_system_info_ver1.0',
-     'driver_system_info_ver1.1',
-     driver_system_info_current_ver,
-     driver_monitor,
-     ioq_exit,
-     zero_extended_marker_garb_drv,
-     invalid_extended_marker_drv,
-     larger_major_vsn_drv,
-     larger_minor_vsn_drv,
-     smaller_major_vsn_drv,
-     smaller_minor_vsn_drv,
-     peek_non_existing_queue,
-     otp_6879,
-     caller,
-     many_events,
-     missing_callbacks,
-     smp_select,
-     driver_select_use,
-     thread_mseg_alloc_cache_clean
-    ].
+init_per_group(_GroupName, Config) ->
+    Config.
 
-fun_to_port(doc) -> "Test sending a fun to port with an outputv-capable driver.";
-fun_to_port(Config) when is_list(Config) ->
+end_per_group(_GroupName, Config) ->
+    Config.
+
+outputv_errors(doc) -> "Test sending bad types to port with an outputv-capable driver.";
+outputv_errors(Config) when is_list(Config) ->
     ?line Path = ?config(data_dir, Config),
     ?line erl_ddll:start(),
     ?line ok = load_driver(Path, outputv_drv),
 
-    ?line fun_to_port_1(fun() -> 33 end),
-    ?line fun_to_port_1([fun() -> 42 end]),
-    ?line fun_to_port_1([1|fun() -> 42 end]),
-    L = build_io_list(65536),
-    ?line fun_to_port_1([L,fun() -> 42 end]),
-    ?line fun_to_port_1([L|fun() -> 42 end]),
+    outputv_bad_types(fun(T) ->
+			      ?line outputv_errors_1(T),
+			      ?line outputv_errors_1([1|T]),
+			      ?line L = [1,2,3],
+			      ?line outputv_errors_1([L,T]),
+			      ?line outputv_errors_1([L|T])
+		      end),
+    outputv_errors_1(42),
+
+    %% Test iolists that do not fit in the address space.
+    %% Unfortunately, it would be too slow to test in a 64-bit emulator.
+    case erlang:system_info(wordsize) of
+	4 -> outputv_huge_iolists();
+	_ -> ok
+    end.
+
+outputv_bad_types(Test) ->
+    Types = [-1,256,atom,42.0,{a,b,c},make_ref(),fun() -> 42 end,
+	     [1|2],<<1:1>>,<<1:9>>,<<1:15>>],
+    _ = [Test(Type) || Type <- Types],
     ok.
 
-fun_to_port_1(Term) ->
-    Port = open_port({spawn,outputv_drv}, []),
+outputv_huge_iolists() ->
+    FourGigs = 1 bsl 32,
+    ?line Sizes = [FourGigs+N || N <- lists:seq(0, 64)] ++
+	[1 bsl N || N <- lists:seq(33, 37)],
+    ?line Base = <<0:(1 bsl 20)/unit:8>>,
+    [begin
+	 ?line L = build_iolist(Sz, Base),
+	 ?line outputv_errors_1(L)
+     end || Sz <- Sizes],
+    ok.
+
+outputv_errors_1(Term) ->
+    Port = open_port({spawn_driver,outputv_drv}, []),
     {'EXIT',{badarg,_}} = (catch port_command(Port, Term)),
     port_close(Port).
 
-build_io_list(0) -> [];
-build_io_list(1) -> [7];
-build_io_list(N) ->
-    L = build_io_list(N div 2),
+build_iolist(N, Base) when N < 16 ->
+    case random:uniform(3) of
+	1 ->
+	    <<Bin:N/binary,_/binary>> = Base,
+	    Bin;
+	_ ->
+	    lists:seq(1, N)
+    end;
+build_iolist(N, Base) when N =< byte_size(Base) ->
+    case random:uniform(3) of
+	1 ->
+	    <<Bin:N/binary,_/binary>> = Base,
+	    Bin;
+	2 ->
+	    <<Bin:N/binary,_/binary>> = Base,
+	    [Bin];
+	3 ->
+	    case N rem 2 of
+		0 ->
+		    L = build_iolist(N div 2, Base),
+		    [L,L];
+		1 ->
+		    L = build_iolist(N div 2, Base),
+		    [L,L,45]
+	    end
+    end;
+build_iolist(N0, Base) ->
+    Small = random:uniform(15),
+    Seq = lists:seq(1, Small),
+    N = N0 - Small,
     case N rem 2 of
-	0 -> [L|L];
-	1 -> [7,L|L]
+	0 ->
+	    L = build_iolist(N div 2, Base),
+	    [L,L|Seq];
+	1 ->
+	    L = build_iolist(N div 2, Base),
+	    [47,L,L|Seq]
     end.
-
-
 
 outputv_echo(doc) -> ["Test echoing data with a driver that supports outputv."];
 outputv_echo(Config) when is_list(Config) ->
@@ -308,7 +364,6 @@ compare(Got, Expected) ->
 %% 		Driver timer test suites
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-timer(suite) -> [timer_measure,timer_cancel,timer_delay,timer_change].
 
 timer_measure(doc) -> ["Check that timers time out in good time."];
 timer_measure(Config) when is_list(Config) ->
@@ -1299,17 +1354,6 @@ driver_monitor(Config) when is_list(Config) ->
     ?line stop_driver(Port, Name),
     ?line ok.
 
-ioq_exit(doc) -> [];
-ioq_exit(suite) ->
-    [ioq_exit_ready_input,
-     ioq_exit_ready_output,
-     ioq_exit_timeout,
-     ioq_exit_ready_async,
-     ioq_exit_event,
-     ioq_exit_ready_input_async,
-     ioq_exit_ready_output_async,
-     ioq_exit_timeout_async,
-     ioq_exit_event_async].
 
 -define(IOQ_EXIT_READY_INPUT, 1).
 -define(IOQ_EXIT_READY_OUTPUT, 2).
@@ -1682,7 +1726,7 @@ smp_select0(Config) ->
     ProcFun = fun()-> io:format("Worker ~p starting\n",[self()]),	
 		      ?line Port = open_port({spawn, DrvName}, []),
 		      smp_select_loop(Port, 100000),
-		      sleep(500), % wait for driver to handle pending events
+		      sleep(1000), % wait for driver to handle pending events
 		      ?line true = erlang:port_close(Port),
 		      Master ! {ok,self()},
 		      io:format("Worker ~p finished\n",[self()])
@@ -1790,8 +1834,8 @@ mseg_alloc_ccc() ->
     mseg_alloc_ccc(erlang:system_info({allocator,mseg_alloc})).
 
 mseg_alloc_ccc(MsegAllocInfo) ->
-    ?line {value,{calls, CL}}
-	= lists:keysearch(calls, 1, MsegAllocInfo),
+    ?line {value,{memkind, MKL}} = lists:keysearch(memkind,1,MsegAllocInfo),
+    ?line {value,{calls, CL}} = lists:keysearch(calls, 1, MKL),
     ?line {value,{mseg_check_cache, GigaCCC, CCC}}
 	= lists:keysearch(mseg_check_cache, 1, CL),
     ?line GigaCCC*1000000000 + CCC.
@@ -1800,11 +1844,27 @@ mseg_alloc_cached_segments() ->
     mseg_alloc_cached_segments(erlang:system_info({allocator,mseg_alloc})).
 
 mseg_alloc_cached_segments(MsegAllocInfo) ->
+    MemName = case is_halfword_vm() of
+	true -> "high memory";
+	false -> "all memory"
+    end,
+    ?line [{memkind,DrvMem}]
+	= lists:filter(fun(E) -> case E of
+				    {memkind, [{name, MemName} | _]} -> true;
+				    _ -> false
+		       end end, MsegAllocInfo),
     ?line {value,{status, SL}}
-	= lists:keysearch(status, 1, MsegAllocInfo),
+	= lists:keysearch(status, 1, DrvMem),
     ?line {value,{cached_segments, CS}}
 	= lists:keysearch(cached_segments, 1, SL),
     ?line CS.
+
+is_halfword_vm() ->
+    case {erlang:system_info({wordsize, internal}),
+	  erlang:system_info({wordsize, external})} of
+	{4, 8} -> true;
+	{WS, WS} -> false
+    end.
 
 driver_alloc_sbct() ->
     {_, _, _, As} = erlang:system_info(allocator),
@@ -1832,13 +1892,39 @@ thread_mseg_alloc_cache_clean_test(Port, N, CCI, Size) ->
     ?line ?t:format("CCC = ~p~n", [CCC]),
     ?line true = CCC > OCCC,
     ?line thread_mseg_alloc_cache_clean_test(Port, N-1, CCI, Size).
-    
-    
+
+otp_9302(Config) when is_list(Config) ->
+    ?line Path = ?config(data_dir, Config),
+    ?line erl_ddll:start(),
+    ?line ok = load_driver(Path, otp_9302_drv),
+    ?line Port = open_port({spawn, otp_9302_drv}, []),
+    ?line true = is_port(Port),
+    ?line port_command(Port, ""),
+    ?line {msg, block} = get_port_msg(Port, infinity),
+    ?line {msg, job} = get_port_msg(Port, infinity),
+    ?line case erlang:system_info(thread_pool_size) of
+	      0 ->
+		  {msg, cancel} = get_port_msg(Port, infinity);
+	      _ ->
+		  ok
+	  end,
+    ?line {msg, job} = get_port_msg(Port, infinity),
+    ?line {msg, end_of_jobs} = get_port_msg(Port, infinity),
+    ?line no_msg = get_port_msg(Port, 2000),
+    ?line port_close(Port),
+    ?line ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% 		Utilities
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
+
+get_port_msg(Port, Timeout) ->
+    receive
+	{Port, What} ->
+	    {msg, What}
+    after Timeout ->
+	    no_msg
+    end.
 
 wait_until(Fun) ->
     case Fun() of

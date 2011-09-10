@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 1996-2010. All Rights Reserved.
+%% Copyright Ericsson AB 1996-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -113,8 +113,9 @@
 		syncers = []       :: [pid()],
 		node_name = node() :: node(),
 		the_locker, the_registrar, trace,
-                global_lock_down = false
+                global_lock_down = false :: boolean()
                }).
+-type state() :: #state{}.
 
 %%% There are also ETS tables used for bookkeeping of locks and names
 %%% (the first position is the key):
@@ -165,7 +166,7 @@ start_link() ->
 stop() -> 
     gen_server:call(global_name_server, stop, infinity).
 
--spec sync() -> 'ok' | {'error', term()}.
+-spec sync() -> 'ok' | {'error', Reason :: term()}.
 sync() ->
     case check_sync_nodes() of
 	{error, _} = Error ->
@@ -174,7 +175,7 @@ sync() ->
 	    gen_server:call(global_name_server, {sync, SyncNodes}, infinity)
     end.
 
--spec sync([node()]) -> 'ok' | {'error', term()}.
+-spec sync([node()]) -> 'ok' | {'error', Reason :: term()}.
 sync(Nodes) ->
     case check_sync_nodes(Nodes) of
 	{error, _} = Error ->
@@ -183,7 +184,10 @@ sync(Nodes) ->
 	    gen_server:call(global_name_server, {sync, SyncNodes}, infinity)
     end.
 
--spec send(term(), term()) -> pid().
+-spec send(Name, Msg) -> Pid when
+      Name :: term(),
+      Msg :: term(),
+      Pid :: pid().
 send(Name, Msg) ->
     case whereis_name(Name) of
 	Pid when is_pid(Pid) ->
@@ -194,7 +198,8 @@ send(Name, Msg) ->
     end.
 
 %% See OTP-3737.
--spec whereis_name(term()) -> pid() | 'undefined'.
+-spec whereis_name(Name) -> pid() | 'undefined' when
+      Name :: term().
 whereis_name(Name) ->
     where(Name).
 
@@ -218,13 +223,19 @@ node_disconnected(Node) ->
 %% undefined which one of them is used.
 %% Method blocks the name registration, but does not affect global locking.
 %%-----------------------------------------------------------------
--spec register_name(term(), pid()) -> 'yes' | 'no'.
+-spec register_name(Name, Pid) -> 'yes' | 'no' when
+      Name :: term(),
+      Pid :: pid().
 register_name(Name, Pid) when is_pid(Pid) ->
     register_name(Name, Pid, fun random_exit_name/3).
 
--type method() :: fun((term(), pid(), pid()) -> pid() | 'none').
+-type method() :: fun((Name :: term(), Pid :: pid(), Pid2 :: pid()) ->
+                             pid() | 'none').
 
--spec register_name(term(), pid(), method()) -> 'yes' | 'no'.
+-spec register_name(Name, Pid, Resolve) -> 'yes' | 'no' when
+      Name :: term(),
+      Pid :: pid(),
+      Resolve :: method().
 register_name(Name, Pid, Method) when is_pid(Pid) ->
     Fun = fun(Nodes) ->
         case (where(Name) =:= undefined) andalso check_dupname(Name, Pid) of
@@ -256,7 +267,8 @@ check_dupname(Name, Pid) ->
             end
     end.
 
--spec unregister_name(term()) -> _.
+-spec unregister_name(Name) -> _ when
+      Name :: term().
 unregister_name(Name) ->
     case where(Name) of
 	undefined ->
@@ -272,11 +284,16 @@ unregister_name(Name) ->
             gen_server:call(global_name_server, {registrar, Fun}, infinity)
     end.
 
--spec re_register_name(term(), pid()) -> _.
+-spec re_register_name(Name, Pid) -> _ when
+      Name :: term(),
+      Pid :: pid().
 re_register_name(Name, Pid) when is_pid(Pid) ->
     re_register_name(Name, Pid, fun random_exit_name/3).
 
--spec re_register_name(term(), pid(), method()) -> _.
+-spec re_register_name(Name, Pid, Resolve) -> _ when
+      Name :: term(),
+      Pid :: pid(),
+      Resolve :: method().
 re_register_name(Name, Pid, Method) when is_pid(Pid) ->
     Fun = fun(Nodes) ->
 		  gen_server:multi_call(Nodes,
@@ -287,7 +304,8 @@ re_register_name(Name, Pid, Method) when is_pid(Pid) ->
     ?trace({re_register_name, self(), Name, Pid, Method}),
     gen_server:call(global_name_server, {registrar, Fun}, infinity).
 
--spec registered_names() -> [term()].
+-spec registered_names() -> [Name] when
+      Name :: term().
 registered_names() ->
     MS = ets:fun2ms(fun({Name,_Pid,_M,_RP,_R}) -> Name end),
     ets:select(global_names, MS).
@@ -328,19 +346,25 @@ register_name_external(Name, Pid, Method) when is_pid(Pid) ->
 unregister_name_external(Name) ->
     unregister_name(Name).
 
--type id() :: {term(), term()}.
+-type id() :: {ResourceId :: term(), LockRequesterId :: term()}.
 
--spec set_lock(id()) -> boolean().
+-spec set_lock(Id) -> boolean() when
+      Id :: id().
 set_lock(Id) ->
     set_lock(Id, [node() | nodes()], infinity, 1).
 
 -type retries() :: non_neg_integer() | 'infinity'.
 
--spec set_lock(id(), [node()]) -> boolean().
+-spec set_lock(Id, Nodes) -> boolean() when
+      Id :: id(),
+      Nodes :: [node()].
 set_lock(Id, Nodes) ->
     set_lock(Id, Nodes, infinity, 1).
 
--spec set_lock(id(), [node()], retries()) -> boolean().
+-spec set_lock(Id, Nodes, Retries) -> boolean() when
+      Id :: id(),
+      Nodes :: [node()],
+      Retries :: retries().
 set_lock(Id, Nodes, Retries) when is_integer(Retries), Retries >= 0 ->
     set_lock(Id, Nodes, Retries, 1);
 set_lock(Id, Nodes, infinity) ->
@@ -362,11 +386,14 @@ set_lock({_ResourceId, _LockRequesterId} = Id, Nodes, Retries, Times) ->
 	    set_lock(Id, Nodes, dec(Retries), Times+1)
     end.
 
--spec del_lock(id()) -> 'true'.
+-spec del_lock(Id) -> 'true' when
+      Id :: id().
 del_lock(Id) ->
     del_lock(Id, [node() | nodes()]).
 
--spec del_lock(id(), [node()]) -> 'true'.
+-spec del_lock(Id, Nodes) -> 'true' when
+      Id :: id(),
+      Nodes :: [node()].
 del_lock({_ResourceId, _LockRequesterId} = Id, Nodes) ->
     ?trace({del_lock, {me,self()}, Id, {nodes,Nodes}}),
     gen_server:multi_call(Nodes, global_name_server, {del_lock, Id}),
@@ -374,13 +401,25 @@ del_lock({_ResourceId, _LockRequesterId} = Id, Nodes) ->
 
 -type trans_fun() :: function() | {module(), atom()}.
 
--spec trans(id(), trans_fun()) -> term().
+-spec trans(Id, Fun) -> Res | aborted when
+      Id :: id(),
+      Fun :: trans_fun(),
+      Res :: term().
 trans(Id, Fun) -> trans(Id, Fun, [node() | nodes()], infinity).
 
--spec trans(id(), trans_fun(), [node()]) -> term().
+-spec trans(Id, Fun, Nodes) -> Res | aborted when
+      Id :: id(),
+      Fun :: trans_fun(),
+      Nodes :: [node()],
+      Res :: term().
 trans(Id, Fun, Nodes) -> trans(Id, Fun, Nodes, infinity).
 
--spec trans(id(), trans_fun(), [node()], retries()) -> term().
+-spec trans(Id, Fun, Nodes, Retries) -> Res | aborted when
+      Id :: id(),
+      Fun :: trans_fun(),
+      Nodes :: [node()],
+      Retries :: retries(),
+      Res :: term().
 trans(Id, Fun, Nodes, Retries) ->
     case set_lock(Id, Nodes, Retries) of
 	true ->
@@ -399,6 +438,9 @@ info() ->
 %%%-----------------------------------------------------------------
 %%% Call-back functions from gen_server
 %%%-----------------------------------------------------------------
+
+-spec init([]) -> {'ok', state()}.
+
 init([]) ->
     process_flag(trap_exit, true),
     _ = ets:new(global_locks, [set, named_table, protected]),
@@ -542,6 +584,11 @@ init([]) ->
 %%          sent by each node to all new nodes (Node becomes known to them)
 %%-----------------------------------------------------------------
 
+-spec handle_call(term(), {pid(), term()}, state()) ->
+        {'noreply', state()} |
+	{'reply', term(), state()} |
+	{'stop', 'normal', 'stopped', state()}.
+
 handle_call({whereis, Name}, From, S) ->
     do_whereis(Name, From),
     {noreply, S};
@@ -621,6 +668,9 @@ handle_call(Request, From, S) ->
 %% init_connect
 %%
 %%========================================================================
+
+-spec handle_cast(term(), state()) -> {'noreply', state()}.
+
 handle_cast({init_connect, Vsn, Node, InitMsg}, S) ->
     %% Sent from global_name_server at Node.
     ?trace({'####', init_connect, {vsn, Vsn}, {node,Node},{initmsg,InitMsg}}),
@@ -781,6 +831,11 @@ handle_cast(Request, S) ->
                              "received an unexpected message:\n"
                              "handle_cast(~p, _)\n", [Request]),
     {noreply, S}.
+
+%%========================================================================
+
+-spec handle_info(term(), state()) ->
+        {'noreply', state()} | {'stop', term(), state()}.
 
 handle_info({'EXIT', Locker, _Reason}=Exit, #state{the_locker=Locker}=S) ->
     {stop, {locker_died,Exit}, S#state{the_locker=undefined}};
@@ -1122,12 +1177,17 @@ do_whereis(Name, From) ->
 	    send_again({whereis, Name, From})
     end.
 
+-spec terminate(term(), state()) -> 'ok'.
+
 terminate(_Reason, _S) ->
     true = ets:delete(global_names),
     true = ets:delete(global_names_ext),
     true = ets:delete(global_locks),
     true = ets:delete(global_pid_names),
-    true = ets:delete(global_pid_ids).
+    true = ets:delete(global_pid_ids),
+    ok.
+
+-spec code_change(term(), state(), term()) -> {'ok', state()}.
 
 code_change(_OldVsn, S, _Extra) ->
     {ok, S}.
@@ -1906,7 +1966,10 @@ resolve_it(Method, Name, Pid1, Pid2) ->
 minmax(P1,P2) ->
     if node(P1) < node(P2) -> {P1, P2}; true -> {P2, P1} end.
 
--spec random_exit_name(term(), pid(), pid()) -> pid().
+-spec random_exit_name(Name, Pid1, Pid2) -> 'none' when
+      Name :: term(),
+      Pid1 :: pid(),
+      Pid2 :: pid().
 random_exit_name(Name, Pid, Pid2) ->
     {Min, Max} = minmax(Pid, Pid2),
     error_logger:info_msg("global: Name conflict terminating ~w\n",
@@ -1914,12 +1977,19 @@ random_exit_name(Name, Pid, Pid2) ->
     exit(Max, kill),
     Min.
 
+-spec random_notify_name(Name, Pid1, Pid2) -> 'none' when
+      Name :: term(),
+      Pid1 :: pid(),
+      Pid2 :: pid().
 random_notify_name(Name, Pid, Pid2) ->
     {Min, Max} = minmax(Pid, Pid2),
     Max ! {global_name_conflict, Name},
     Min.
 
--spec notify_all_name(term(), pid(), pid()) -> 'none'.
+-spec notify_all_name(Name, Pid1, Pid2) -> 'none' when
+      Name :: term(),
+      Pid1 :: pid(),
+      Pid2 :: pid().
 notify_all_name(Name, Pid, Pid2) ->
     Pid ! {global_name_conflict, Name, Pid2},
     Pid2 ! {global_name_conflict, Name, Pid},
@@ -1955,7 +2025,7 @@ delete_lock(Ref, S0) ->
     Locks = pid_locks(Ref),
     F = fun({ResourceId, LockRequesterId, PidRefs}, S) -> 
                 {Pid, _RPid, Ref} = lists:keyfind(Ref, 3, PidRefs),
-                remove_lock(ResourceId, LockRequesterId, Pid, PidRefs, true,S)
+                remove_lock(ResourceId, LockRequesterId, Pid, PidRefs, true, S)
         end,
     lists:foldl(F, S0, Locks).
 

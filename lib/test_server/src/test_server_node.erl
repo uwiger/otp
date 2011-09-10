@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2002-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2002-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -84,7 +84,7 @@ start_remote_main_target(Parameters) ->
 					 MasterNode,MasterCookie),
     Cmd = 
 	case os:getenv("TEST_SERVER_FRAMEWORK") of
-	    false -> Cmd0;
+	    FW when FW =:= false; FW =:= "undefined" -> Cmd0;
 	    FW -> Cmd0 ++ " -env TEST_SERVER_FRAMEWORK " ++ FW
 	end,
 	

@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %% 
-%% Copyright Ericsson AB 2005-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2005-2011. All Rights Reserved.
 %% 
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -21,8 +21,8 @@
 -module(ftp_suite_lib).
 
 
--include("test_server.hrl").
--include("test_server_line.hrl").
+-include_lib("test_server/include/test_server.hrl").
+-include_lib("test_server/include/test_server_line.hrl").
 -include("inets_test_lib.hrl").
 
 %% Test server specific exports
@@ -74,7 +74,7 @@ tickets(suite) ->
 ftpd_init(FtpdTag, Config) ->
     %% Get the host name(s) of FTP server
     Hosts = 
-	case ?config(ftpd_hosts, Config) of
+	case ct:get_config(ftpd_hosts) of
 	    undefined ->
 		ftpd_hosts(data_dir(Config));
 	    H ->
@@ -129,7 +129,7 @@ get_ftpd_host([Host|Hosts]) ->
 
 dirty_select_ftpd_host(Config) ->
     Hosts = 
-	case ?config(ftpd_hosts, Config) of
+	case ct:get_config(ftpd_hosts) of
 	    undefined ->
 		ftpd_hosts(data_dir(Config));
 	    H ->

@@ -2,7 +2,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2003-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2003-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -45,9 +45,11 @@
 		    t_atom_vals/1,
 		    t_binary/0,
 		    t_bitstr/0,
+		    t_bitstrlist/0,
 		    t_boolean/0,
 		    t_byte/0,
 		    t_char/0,
+		    t_charlist/0,
 		    t_cons/0,
 		    t_cons/2,
 		    t_cons_hd/1,
@@ -124,7 +126,8 @@
 		    t_tuple/1,
 		    t_tuple_args/1,
 		    t_tuple_size/1,
-		    t_tuple_subtypes/1
+		    t_tuple_subtypes/1,
+		    t_unicode_string/0
 		   ]).
 
 -ifdef(DO_ERL_BIF_TYPES_TEST).
@@ -151,7 +154,7 @@ type(binary, bin_to_list, Arity, Xs) when 1 =< Arity, Arity =< 3 ->
 	 fun(_) -> t_list(t_integer()) end);
 type(binary, compile_pattern, 1, Xs) ->
   strict(arg_types(binary, compile_pattern, 1), Xs,
-	 fun(_) -> t_tuple([t_atom(bm),t_binary()]) end);
+	 fun(_) -> t_binary_compiled_pattern() end);
 type(binary, copy, Arity, Xs)  when Arity =:= 1; Arity =:= 2 ->
   strict(arg_types(binary, copy, Arity), Xs,
 	 fun(_) -> t_binary() end);
@@ -189,127 +192,19 @@ type(binary, referenced_byte_size, 1, Xs) ->
   strict(arg_types(binary, referenced_byte_size, 1), Xs,
 	 fun(_) -> t_non_neg_integer() end);
 %%-- code ---------------------------------------------------------------------
-type(code, add_path, 1, Xs) ->
-  strict(arg_types(code, add_path, 1), Xs,
-	 fun (_) ->
-	     t_sup(t_atom('true'),
-		   t_tuple([t_atom('error'), t_atom('bad_directory')]))
-	 end);
-type(code, add_patha, 1, Xs) ->
-  type(code, add_path, 1, Xs);
-type(code, add_paths, 1, Xs) ->
-  strict(arg_types(code, add_paths, 1), Xs, fun(_) -> t_atom('ok') end);
-type(code, add_pathsa, 1, Xs) ->
-  type(code, add_paths, 1, Xs);
-type(code, add_pathsz, 1, Xs) ->
-  type(code, add_paths, 1, Xs);
-type(code, add_pathz, 1, Xs) ->
-  type(code, add_path, 1, Xs);
-type(code, all_loaded, 0, _) ->
-  t_list(t_tuple([t_atom(), t_code_loaded_fname_or_status()]));
-type(code, compiler_dir, 0, _) ->
-  t_string();
-type(code, del_path, 1, Xs) ->
-  strict(arg_types(code, del_path, 1), Xs,
-	 fun (_) ->
-	     t_sup(t_boolean(),
-		   t_tuple([t_atom('error'), t_atom('bad_name')]))
-	 end);
-type(code, delete, 1, Xs) ->
-  strict(arg_types(code, delete, 1), Xs, fun (_) -> t_boolean() end);
-type(code, ensure_loaded, 1, Xs) ->
-  type(code, load_file, 1, Xs);
 type(code, get_chunk, 2, Xs) ->
   strict(arg_types(code, get_chunk, 2), Xs,
 	 fun (_) -> t_sup(t_binary(), t_atom('undefined')) end);
-type(code, get_object_code, 1, Xs) ->
-  strict(arg_types(code, get_object_code, 1), Xs,
-	 fun (_) ->
-	     t_sup(t_tuple([t_atom(), t_binary(), t_string()]),
-		   t_atom('error'))
-	 end);
-type(code, get_path, 0, _) ->
-  t_list(t_string());
-type(code, is_loaded, 1, Xs) ->
-  strict(arg_types(code, is_loaded, 1), Xs,
-	 fun (_) ->
-	     t_sup([t_tuple([t_atom('file'), t_code_loaded_fname_or_status()]),
-		    t_atom('false')])
-	 end);
-type(code, is_sticky, 1, Xs) ->
-  strict(arg_types(code, is_sticky, 1), Xs, fun (_) -> t_boolean() end);
 type(code, is_module_native, 1, Xs) ->
   strict(arg_types(code, is_module_native, 1), Xs,
 	 fun (_) -> t_sup(t_boolean(), t_atom('undefined')) end);
-type(code, lib_dir, 0, _) ->
-  t_string();
-type(code, lib_dir, 1, Xs) ->
-  strict(arg_types(code, lib_dir, 1), Xs,
-	 fun (_) ->
-	     t_sup(t_string(),
- 		   t_tuple([t_atom('error'), t_atom('bad_name')]))
- 	 end);
-type(code, load_abs, 1, Xs) ->
-  strict(arg_types(code, load_abs, 1), Xs,
-	 fun ([_File]) -> t_code_load_return(t_atom()) end);	% XXX: cheating
-type(code, load_abs, 2, Xs) ->
-  strict(arg_types(code, load_abs, 2), Xs,
-	 fun ([_File,Mod]) -> t_code_load_return(Mod) end);
-type(code, load_binary, 3, Xs) ->
-  strict(arg_types(code, load_binary, 3), Xs,
-	 fun ([Mod,_File,_Bin]) -> t_code_load_return(Mod) end);
-type(code, load_file, 1, Xs) ->
-  strict(arg_types(code, load_file, 1), Xs,
-	 fun ([Mod]) -> t_code_load_return(Mod) end);
-type(code, load_native_partial, 2, Xs) ->
-  strict(arg_types(code, load_native_partial, 2), Xs,
-	 fun ([Mod,_Bin]) -> t_code_load_return(Mod) end);
-type(code, load_native_sticky, 3, Xs) ->
-  strict(arg_types(code, load_native_sticky, 3), Xs,
-        fun ([Mod,_Bin,_]) -> t_code_load_return(Mod) end);
 type(code, module_md5, 1, Xs) ->
   strict(arg_types(code, module_md5, 1), Xs,
 	 fun (_) -> t_sup(t_binary(), t_atom('undefined')) end);
 type(code, make_stub_module, 3, Xs) ->
   strict(arg_types(code, make_stub_module, 3), Xs, fun ([Mod,_,_]) -> Mod end);
-type(code, priv_dir, 1, Xs) ->
-  strict(arg_types(code, priv_dir, 1), Xs,
-	 fun (_) ->
-	     t_sup(t_string(), t_tuple([t_atom('error'), t_atom('bad_name')]))
-	 end);
-type(code, purge, 1, Xs) ->
-  type(code, delete, 1, Xs);
-type(code, rehash, 0, _) -> t_atom('ok');
-type(code, replace_path, 2, Xs) ->
-  strict(arg_types(code, replace_path, 2), Xs,
-	 fun (_) ->
-	     t_sup([t_atom('true'),
-		    t_tuple([t_atom('error'), t_atom('bad_name')]),
-		    t_tuple([t_atom('error'), t_atom('bad_directory')]),
-		    t_tuple([t_atom('error'),
-			     t_tuple([t_atom('badarg'), t_any()])])])
-	 end);
-type(code, root_dir, 0, _) ->
-  t_string();
-type(code, set_path, 1, Xs) ->
-  strict(arg_types(code, set_path, 1), Xs,
-	 fun (_) ->
-	     t_sup([t_atom('true'),
-		    t_tuple([t_atom('error'), t_atom('bad_path')]),
-		    t_tuple([t_atom('error'), t_atom('bad_directory')])])
-	 end);
-type(code, soft_purge, 1, Xs) ->
-  type(code, delete, 1, Xs);
-type(code, stick_mod, 1, Xs) ->
-  strict(arg_types(code, stick_mod, 1), Xs, fun (_) -> t_atom('true') end);
-type(code, unstick_mod, 1, Xs) ->
-  type(code, stick_mod, 1, Xs);
-type(code, which, 1, Xs) ->
-  strict(arg_types(code, which, 1), Xs,
-	 fun (_) ->
-	     t_sup([t_code_loaded_fname_or_status(),
-		    t_atom('non_existing')])
-	 end);
+type(code, rehash, 0, _) ->
+  t_atom('ok');
 %%-- erl_ddll -----------------------------------------------------------------
 type(erl_ddll, demonitor, 1, Xs) ->
   type(erlang, demonitor, 1, Xs);
@@ -1865,6 +1760,8 @@ type(erts_debug, flat_size, 1, Xs) ->
   strict(arg_types(erts_debug, flat_size, 1), Xs, fun (_) -> t_integer() end);
 type(erts_debug, get_internal_state, 1, _) ->
   t_any();
+type(erts_debug, instructions, 0, _) ->
+  t_list(t_list(t_byte()));
 type(erts_debug, lock_counters, 1, Xs) ->
   strict(arg_types(erts_debug, lock_counters, 1), Xs,
 	 fun ([Arg]) ->
@@ -3330,80 +3227,16 @@ arg_types(binary, part, 3) ->
 arg_types(binary, referenced_byte_size, 1) ->
   [t_binary()];
 %%------- code ----------------------------------------------------------------
-arg_types(code, add_path, 1) ->
-  [t_string()];
-arg_types(code, add_patha, 1) ->
-  arg_types(code, add_path, 1);
-arg_types(code, add_paths, 1) ->
-  [t_list(t_string())];
-arg_types(code, add_pathsa, 1) ->
-  arg_types(code, add_paths, 1);
-arg_types(code, add_pathsz, 1) ->
-  arg_types(code, add_paths, 1);
-arg_types(code, add_pathz, 1) ->
-  arg_types(code, add_path, 1);
-arg_types(code, all_loaded, 0) ->
-  [];
-arg_types(code, compiler_dir, 0) ->
-  [];
-arg_types(code, del_path, 1) ->
-  [t_sup(t_string(), t_atom())];  % OBS: differs from add_path/1
-arg_types(code, delete, 1) ->
-  [t_atom()];
-arg_types(code, ensure_loaded, 1) ->
-  arg_types(code, load_file, 1);
 arg_types(code, get_chunk, 2) ->
   [t_binary(), t_string()];
-arg_types(code, get_object_code, 1) ->
-  [t_atom()];
-arg_types(code, get_path, 0) ->
-  [];
-arg_types(code, is_loaded, 1) ->
-  [t_atom()];
-arg_types(code, is_sticky, 1) ->
-  [t_atom()];
 arg_types(code, is_module_native, 1) ->
   [t_atom()];
-arg_types(code, lib_dir, 0) ->
-  [];
-arg_types(code, lib_dir, 1) ->
-  [t_atom()];
-arg_types(code, load_abs, 1) ->
-  [t_string()];
-arg_types(code, load_abs, 2) ->
-  [t_code_loaded_fname_or_status(), t_atom()];
-arg_types(code, load_binary, 3) ->
-  [t_atom(), t_code_loaded_fname_or_status(), t_binary()];
-arg_types(code, load_file, 1) ->
-  [t_atom()];
-arg_types(code, load_native_partial, 2) ->
-  [t_atom(), t_binary()];
-arg_types(code, load_native_sticky, 3) ->
-  [t_atom(), t_binary(), t_sup(t_binary(), t_atom('false'))];
 arg_types(code, module_md5, 1) ->
   [t_binary()];
 arg_types(code, make_stub_module, 3) ->
   [t_atom(), t_binary(), t_tuple([t_list(), t_list()])];
-arg_types(code, priv_dir, 1) ->
-  [t_atom()];
-arg_types(code, purge, 1) ->
-  arg_types(code, delete, 1);
 arg_types(code, rehash, 0) ->
   [];
-arg_types(code, replace_path, 2) ->
-  [t_atom(), t_string()];
-arg_types(code, root_dir, 0) ->
-  [];
-arg_types(code, set_path, 1) ->
-  [t_list(t_string())];
-arg_types(code, soft_purge, 1) ->
-  arg_types(code, delete, 1);
-arg_types(code, stick_mod, 1) ->
-  [t_atom()];
-arg_types(code, unstick_mod, 1) ->
-  arg_types(code, stick_mod, 1);
-arg_types(code, which, 1) ->
-  [t_atom()];
 %%------- erl_ddll ------------------------------------------------------------
 arg_types(erl_ddll, demonitor, 1) ->
   arg_types(erlang, demonitor, 1);
@@ -3532,9 +3365,9 @@ arg_types(erlang, atom_to_binary, 2) ->
 arg_types(erlang, atom_to_list, 1) ->
   [t_atom()];
 arg_types(erlang, binary_part, 2) ->
-  [t_binary(), t_tuple([t_integer(),t_integer()])];
+  [t_binary(), t_tuple([t_non_neg_integer(), t_integer()])];
 arg_types(erlang, binary_part, 3) ->
-  [t_binary(), t_integer(), t_integer()];
+  [t_binary(), t_non_neg_integer(), t_integer()];
 arg_types(erlang, binary_to_atom, 2) ->
   [t_binary(), t_encoding_a2b()];
 arg_types(erlang, binary_to_existing_atom, 2) ->
@@ -3720,7 +3553,7 @@ arg_types(erlang, list_to_binary, 1) ->
 arg_types(erlang, list_to_bitstr, 1) ->	% XXX: TAKE OUT
   arg_types(erlang, list_to_bitstring, 1);
 arg_types(erlang, list_to_bitstring, 1) ->
-  [t_iolist()];
+  [t_bitstrlist()];
 arg_types(erlang, list_to_existing_atom, 1) ->
   [t_string()];
 arg_types(erlang, list_to_float, 1) ->
@@ -3797,9 +3630,10 @@ arg_types(erlang, nodes, 1) ->
 arg_types(erlang, now, 0) ->
   [];
 arg_types(erlang, open_port, 2) ->
+  ArgT = t_sup(t_unicode_string(), t_binary()),
   [t_sup(t_atom(), t_sup([t_tuple([t_atom('spawn'), t_string()]),
 			  t_tuple([t_atom('spawn_driver'), t_string()]),
-			  t_tuple([t_atom('spawn_executable'), t_string()]),
+			  t_tuple([t_atom('spawn_executable'), ArgT]),
 			  t_tuple([t_atom('fd'), t_integer(), t_integer()])])),
    t_list(t_sup(t_sup([t_atom('stream'),
 		       t_atom('exit_status'),
@@ -3815,8 +3649,8 @@ arg_types(erlang, open_port, 2) ->
 		       t_tuple([t_atom('line'), t_integer()]),
 		       t_tuple([t_atom('cd'), t_string()]),
 		       t_tuple([t_atom('env'), t_list(t_tuple(2))]), % XXX: More
-		       t_tuple([t_atom('args'), t_list(t_string())]),
-		       t_tuple([t_atom('arg0'), t_string()])])))];
+		       t_tuple([t_atom('args'), t_list(ArgT)]),
+		       t_tuple([t_atom('arg0'), ArgT])])))];
 arg_types(erlang, phash, 2) ->
   [t_any(), t_pos_integer()];
 arg_types(erlang, phash2, 1) ->
@@ -4091,6 +3925,8 @@ arg_types(erts_debug, flat_size, 1) ->
   [t_any()];
 arg_types(erts_debug, get_internal_state, 1) ->
   [t_any()];
+arg_types(erts_debug, instructions, 0) ->
+  [];
 arg_types(erts_debug, lock_counters, 1) ->
   [t_sup([t_atom(enabled),
 	  t_atom(info),
@@ -4517,11 +4353,11 @@ arg_types(os, timestamp, 0) ->
 arg_types(re, compile, 1) ->
   [t_iodata()];
 arg_types(re, compile, 2) ->
-  [t_iodata(), t_list(t_re_compile_option())];
+  [t_sup(t_iodata(), t_charlist()), t_list(t_re_compile_option())];
 arg_types(re, run, 2) ->
-  [t_iodata(), t_re_RE()];
+  [t_sup(t_iodata(), t_charlist()), t_re_RE()];
 arg_types(re, run, 3) ->
-  [t_iodata(), t_re_RE(), t_list(t_re_run_option())];
+  [t_sup(t_iodata(), t_charlist()), t_re_RE(), t_list(t_re_run_option())];
 %%------- string --------------------------------------------------------------
 arg_types(string, chars, 2) ->
   [t_char(), t_non_neg_integer()];
@@ -4633,27 +4469,6 @@ t_endian() ->
   t_sup(t_atom('big'), t_atom('little')).
 
 %% =====================================================================
-%% Types for the binary module
-%% =====================================================================
-
-t_binary_part() ->
-  t_tuple([t_non_neg_integer(),t_integer()]).
-
-t_binary_canonical_part() ->
-  t_tuple([t_non_neg_integer(),t_non_neg_integer()]).
-
-t_binary_pattern() ->
-  t_sup([t_binary(),
-	 t_list(t_binary()),
-	 t_binary_compiled_pattern()]).
-
-t_binary_compiled_pattern() ->
-  t_tuple([t_atom('cp'),t_binary()]).
-
-t_binary_options() ->
-  t_list(t_tuple([t_atom('scope'),t_binary_part()])).
-
-%% =====================================================================
 %% HTTP types documented in R12B-4
 %% =====================================================================
 
@@ -4708,7 +4523,28 @@ t_HttpFieldAtom() ->
 	   'Keep-Alive', 'Proxy-Connection']).
 
 t_HttpString() ->
-  t_sup(t_string(),t_binary()).
+  t_sup(t_string(), t_binary()).
+
+%% =====================================================================
+%% These are used for the built-in functions of 'binary'
+%% =====================================================================
+
+t_binary_part() ->
+  t_tuple([t_non_neg_integer(), t_integer()]).
+
+t_binary_canonical_part() ->
+  t_tuple([t_non_neg_integer(), t_non_neg_integer()]).
+
+t_binary_pattern() ->
+  t_sup([t_binary(),
+	 t_list(t_binary()),
+	 t_binary_compiled_pattern()]).
+
+t_binary_compiled_pattern() ->
+  t_tuple([t_sup(t_atom('bm'), t_atom('ac')), t_binary()]).
+
+t_binary_options() ->
+  t_list(t_tuple([t_atom('scope'), t_binary_part()])).
 
 %% =====================================================================
 %% These are used for the built-in functions of 'code'
@@ -4728,11 +4564,6 @@ t_code_load_error_rsn() ->	% also used in erlang:load_module/2
 	 t_atom('native_code'),
 	 t_atom('on_load'),
 	 t_atom('sticky_directory')]).	% only for the 'code' functions
-
-t_code_loaded_fname_or_status() ->
-  t_sup([t_string(), % filename
-	 t_atom('preloaded'),
-	 t_atom('cover_compiled')]).
 
 %% =====================================================================
 %% These are used for the built-in functions of 'erlang'
@@ -4801,7 +4632,8 @@ t_process_priority_level() ->
   t_sup([t_atom('max'), t_atom('high'), t_atom('normal'), t_atom('low')]).
 
 t_process_status() ->
-  t_sup([t_atom('runnable'), t_atom('running'),
+  t_sup([t_atom('exiting'), t_atom('garbage_collecting'),
+	 t_atom('runnable'), t_atom('running'),
 	 t_atom('suspended'), t_atom('waiting')]).
 
 t_raise_errorclass() ->
@@ -4897,7 +4729,6 @@ t_scheduler_bind_type_results() ->
 	 t_atom('thread_no_node_processor_spread'),
 	 t_atom('unbound')]).
 
-
 t_system_monitor_settings() ->
   t_sup([t_atom('undefined'),
 	 t_tuple([t_pid(), t_system_monitor_options()])]).
@@ -4940,10 +4771,11 @@ t_matchres() ->
 %% From the 'ets' documentation
 %%-----------------------------
 %%   Option = Type | Access | named_table | {keypos,Pos}
-%%          | {heir,pid(),HeirData} | {heir,none}
-%%          | {write_concurrency,boolean()}
+%%          | {heir,pid(),HeirData} | {heir,none} | Tweaks
 %%     Type = set | ordered_set | bag | duplicate_bag
 %%   Access = public | protected | private
+%%   Tweaks = {write_concurrency,boolean()}
+%%          | {read_concurrency,boolean()} | compressed
 %%      Pos = integer()
 %% HeirData = term()
 t_ets_new_options() ->
@@ -4955,10 +4787,12 @@ t_ets_new_options() ->
 		t_atom('protected'),
 		t_atom('private'),
 		t_atom('named_table'),
+		t_tuple([t_atom('keypos'), t_integer()]),
 		t_tuple([t_atom('heir'), t_pid(), t_any()]),
 		t_tuple([t_atom('heir'), t_atom('none')]),
-		t_tuple([t_atom('keypos'), t_integer()]),
-		t_tuple([t_atom('write_concurrency'), t_boolean()])])).
+		t_tuple([t_atom('write_concurrency'), t_boolean()]),
+		t_tuple([t_atom('read_concurrency'), t_boolean()]),
+		t_atom('compressed')])).
 
 t_ets_info_items() ->
   t_sup([t_atom('fixed'),
@@ -4972,14 +4806,6 @@ t_ets_info_items() ->
 	 t_atom('protection'),
 	 t_atom('size'),
 	 t_atom('type')]).
-
-%% =====================================================================
-%% These are used for the built-in functions of 'prim_file'
-%% =====================================================================
-
-t_prim_file_name() ->
-   t_sup([t_string(),
-	  t_binary()]).
 
 %% =====================================================================
 %% These are used for the built-in functions of 'gen_tcp'
@@ -5136,13 +4962,14 @@ t_re_MP() ->  %% it's supposed to be an opaque data type
   t_tuple([t_atom('re_pattern'), t_integer(), t_integer(), t_binary()]).
 
 t_re_RE() ->
-  t_sup(t_re_MP(), t_iodata()).
+  t_sup([t_re_MP(), t_iodata(), t_charlist()]).
 
 t_re_compile_option() ->
-  t_sup([t_atoms(['anchored', 'caseless', 'dollar_endonly', 'dotall',
-		  'extended', 'firstline', 'multiline', 'no_auto_capture',
-		  'dupnames', 'ungreedy']),
-	 t_tuple([t_atom('newline'), t_re_NLSpec()])]).
+  t_sup([t_atoms(['unicode', 'anchored', 'caseless', 'dollar_endonly',
+		  'dotall', 'extended', 'firstline', 'multiline',
+		  'no_auto_capture', 'dupnames', 'ungreedy']),
+	 t_tuple([t_atom('newline'), t_re_NLSpec()]),
+	 t_atoms(['bsr_anycrlf', 'bsr_unicode'])]).
 
 t_re_run_option() ->
   t_sup([t_atoms(['anchored', 'global', 'notbol', 'noteol', 'notempty']),
@@ -5159,7 +4986,7 @@ t_re_Type() ->
   t_atoms(['index', 'list', 'binary']).
 
 t_re_NLSpec() ->
-  t_atoms(['cr', 'crlf', 'lf', 'anycrlf']).
+  t_atoms(['cr', 'crlf', 'lf', 'anycrlf', 'any']).
 
 t_re_ValueSpec() ->
   t_sup(t_atoms(['all', 'all_but_first', 'first', 'none']), t_re_ValueList()).
@@ -5172,6 +4999,13 @@ t_re_Captured() ->
 
 t_re_CapturedData() ->
   t_sup([t_tuple([t_integer(), t_integer()]), t_string(), t_binary()]).
+
+%% =====================================================================
+%% These are used for the built-in functions of 'prim_file'
+%% =====================================================================
+
+t_prim_file_name() ->
+   t_sup(t_unicode_string(), t_binary()).
 
 %% =====================================================================
 %% These are used for the built-in functions of 'unicode'

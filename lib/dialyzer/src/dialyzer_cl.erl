@@ -2,7 +2,7 @@
 %%-------------------------------------------------------------------
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2006-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2006-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -46,7 +46,8 @@
 	 legal_warnings  = ordsets:new()  :: [dial_warn_tag()],
 	 mod_deps        = dict:new()     :: dict(),
 	 output          = standard_io	  :: io:device(),
-	 output_format   = formatted      :: 'raw' | 'formatted',
+	 output_format   = formatted      :: format(),
+	 filename_opt    = basename       :: fopt(),
 	 output_plt      = none           :: 'none' | file:filename(),
 	 plt_info        = none           :: 'none' | dialyzer_plt:plt_info(),
 	 report_mode     = normal         :: rep_mode(),
@@ -188,6 +189,12 @@ init_opts_for_remove(Opts) ->
 plt_common(#options{init_plts = [InitPlt]} = Opts, RemoveFiles, AddFiles) ->
   case check_plt(Opts, RemoveFiles, AddFiles) of
     ok ->
+      case Opts#options.output_plt of
+	none -> ok;
+	OutPlt ->
+	  {ok, Binary} = file:read_file(InitPlt),
+	  file:write_file(OutPlt, Binary)
+      end,
       case Opts#options.report_mode of
 	quiet -> ok;
 	_ -> io:put_chars(" yes\n")
@@ -532,8 +539,10 @@ hc(Mod) ->
 new_state() ->
   #cl_state{}.
 
-init_output(State0, #options{output_file = OutFile, output_format = OutFormat}) ->
-  State = State0#cl_state{output_format = OutFormat},
+init_output(State0, #options{output_file = OutFile,
+			     output_format = OutFormat,
+			     filename_opt = FOpt}) ->
+  State = State0#cl_state{output_format = OutFormat, filename_opt = FOpt},
   case OutFile =:= none of
     true ->
       State;
@@ -766,6 +775,7 @@ print_warnings(#cl_state{stored_warnings = []}) ->
   ok;
 print_warnings(#cl_state{output = Output,
 			 output_format = Format,
+			 filename_opt = FOpt,
 			 stored_warnings = Warnings}) ->
   PrWarnings = process_warnings(Warnings),
   case PrWarnings of
@@ -773,7 +783,7 @@ print_warnings(#cl_state{output = Output,
     [_|_] ->
       S = case Format of
 	    formatted ->
-	      [dialyzer:format_warning(W) || W <- PrWarnings];
+	      [dialyzer:format_warning(W, FOpt) || W <- PrWarnings];
 	    raw ->
 	      [io_lib:format("~p. \n", [W]) || W <- PrWarnings]
 	  end,

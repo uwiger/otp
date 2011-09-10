@@ -2,7 +2,7 @@
 %%-----------------------------------------------------------------------
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2006-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2006-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -47,6 +47,7 @@ build(Opts) ->
 		  ?WARN_FAILING_CALL,
 		  ?WARN_BIN_CONSTRUCTION,
 		  ?WARN_CALLGRAPH,
+		  ?WARN_CONTRACT_RANGE,
 		  ?WARN_CONTRACT_TYPES,
 		  ?WARN_CONTRACT_SYNTAX],
   DefaultWarns1 = ordsets:from_list(DefaultWarns),
@@ -120,12 +121,18 @@ build_options([{OptName, undefined}|Rest], Options) when is_atom(OptName) ->
   build_options(Rest, Options);
 build_options([{OptionName, Value} = Term|Rest], Options) ->
   case OptionName of
+    apps ->
+      OldValues = Options#options.files_rec,
+      AppDirs = get_app_dirs(Value),
+      assert_filenames(Term, AppDirs),
+      build_options(Rest, Options#options{files_rec = AppDirs ++ OldValues});
     files ->
       assert_filenames(Term, Value),
       build_options(Rest, Options#options{files = Value});
     files_rec ->
+      OldValues = Options#options.files_rec,
       assert_filenames(Term, Value),
-      build_options(Rest, Options#options{files_rec = Value});
+      build_options(Rest, Options#options{files_rec = Value ++ OldValues});
     analysis_type ->
       NewOptions =
 	case Value of
@@ -169,6 +176,9 @@ build_options([{OptionName, Value} = Term|Rest], Options) ->
     output_format ->
       assert_output_format(Value),
       build_options(Rest, Options#options{output_format = Value});
+    filename_opt ->
+      assert_filename_opt(Value),
+      build_options(Rest, Options#options{filename_opt = Value});
     output_plt ->
       assert_filename(Value),
       build_options(Rest, Options#options{output_plt = Value});
@@ -187,6 +197,11 @@ build_options([{OptionName, Value} = Term|Rest], Options) ->
   end;
 build_options([], Options) ->
   Options.
+
+get_app_dirs(Apps) when is_list(Apps) ->
+  dialyzer_cl_parse:get_lib_dir([atom_to_list(A) || A <- Apps]);
+get_app_dirs(Apps) ->
+  bad_option("Use a list of otp applications", Apps).
 
 assert_filenames(Term, [FileName|Left]) when length(FileName) >= 0 ->
   case filelib:is_file(FileName) orelse filelib:is_dir(FileName) of
@@ -217,6 +232,13 @@ assert_output_format(formatted) ->
   ok;
 assert_output_format(Term) ->
   bad_option("Illegal value for output_format", Term).
+
+assert_filename_opt(basename) ->
+  ok;
+assert_filename_opt(fullpath) ->
+  ok;
+assert_filename_opt(Term) ->
+  bad_option("Illegal value for filename_opt", Term).
 
 assert_plt_op(#options{analysis_type = OldVal}, 
 	      #options{analysis_type = NewVal}) ->

@@ -4,7 +4,7 @@
 <application xmlns:xi="http://www.w3.org/2001/XInclude">
   <header>
     <copyright>
-      <year>2003</year><year>2010</year>
+      <year>2003</year><year>2011</year>
       <holder>Ericsson AB. All Rights Reserved.</holder>
     </copyright>
     <legalnotice>
@@ -76,6 +76,7 @@
   <xi:include href="ct_telnet.xml"/>
   <xi:include href="unix_telnet.xml"/>
   <xi:include href="ct_slave.xml"/>
+  <xi:include href="ct_hooks.xml"/>
 </application>
 
 

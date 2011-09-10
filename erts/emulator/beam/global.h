@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 1996-2010. All Rights Reserved.
+ * Copyright Ericsson AB 1996-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -183,7 +183,7 @@ struct port {
 				    process to get (line oriented I/O)*/
     Uint32 status;		 /* Status and type flags */
     int control_flags;		 /* Flags for port_control()  */
-    Uint32 snapshot;             /* Next snapshot that port should be part of */
+    erts_aint32_t snapshot;      /* Next snapshot that port should be part of */
     struct reg_proc *reg;
     ErlDrvPDL port_data_lock;
 
@@ -527,11 +527,10 @@ union erl_off_heap_ptr {
 
 /* arrays that get malloced at startup */
 extern Port* erts_port;
-extern erts_smp_atomic_t erts_ports_alive;
 
 extern Uint erts_max_ports;
 extern Uint erts_port_tab_index_mask;
-extern erts_smp_atomic_t erts_ports_snapshot;
+extern erts_smp_atomic32_t erts_ports_snapshot;
 extern erts_smp_atomic_t erts_dead_ports_ptr;
 
 ERTS_GLB_INLINE void erts_may_save_closed_port(Port *prt);
@@ -541,12 +540,12 @@ ERTS_GLB_INLINE void erts_may_save_closed_port(Port *prt);
 ERTS_GLB_INLINE void erts_may_save_closed_port(Port *prt)
 {
     ERTS_SMP_LC_ASSERT(erts_smp_lc_spinlock_is_locked(&prt->state_lck));
-    if (prt->snapshot != erts_smp_atomic_read(&erts_ports_snapshot)) {
+    if (prt->snapshot != erts_smp_atomic32_read_acqb(&erts_ports_snapshot)) {
 	/* Dead ports are added from the end of the snapshot buffer */
 	Eterm* tombstone = (Eterm*) erts_smp_atomic_addtest(&erts_dead_ports_ptr,
-							    -(long)sizeof(Eterm));
+							    -(erts_aint_t)sizeof(Eterm));
 	ASSERT(tombstone+1 != NULL);
-	ASSERT(prt->snapshot == (Uint32) erts_smp_atomic_read(&erts_ports_snapshot) - 1);
+	ASSERT(prt->snapshot == erts_smp_atomic32_read(&erts_ports_snapshot) - 1);
 	*tombstone = prt->id;
     }
     /*else no ongoing snapshot or port was already included or created after snapshot */
@@ -563,7 +562,7 @@ extern Uint display_items;	/* no of items to display in traces etc */
 extern Uint display_loads;	/* print info about loaded modules */
 
 extern int erts_backtrace_depth;
-extern erts_smp_atomic_t erts_max_gen_gcs;
+extern erts_smp_atomic32_t erts_max_gen_gcs;
 
 extern int erts_disable_tolerant_timeofday;
 
@@ -834,7 +833,7 @@ do {									\
 void erts_emasculate_writable_binary(ProcBin* pb);
 Eterm erts_new_heap_binary(Process *p, byte *buf, int len, byte** datap);
 Eterm erts_new_mso_binary(Process*, byte*, int);
-Eterm new_binary(Process*, byte*, int);
+Eterm new_binary(Process*, byte*, Uint);
 Eterm erts_realloc_binary(Eterm bin, size_t size);
 
 /* erl_bif_info.c */
@@ -890,9 +889,31 @@ void erl_error(char*, va_list);
 /* copy.c */
 void init_copy(void);
 Eterm copy_object(Eterm, Process*);
+
+#if HALFWORD_HEAP
+Uint size_object_rel(Eterm, Eterm*);
+#  define size_object(A) size_object_rel(A,NULL)
+
+Eterm copy_struct_rel(Eterm, Uint, Eterm**, ErlOffHeap*, Eterm* src_base, Eterm* dst_base);
+#  define copy_struct(OBJ,SZ,HPP,OH) copy_struct_rel(OBJ,SZ,HPP,OH, NULL,NULL)
+
+Eterm copy_shallow_rel(Eterm*, Uint, Eterm**, ErlOffHeap*, Eterm* src_base);
+#  define copy_shallow(A,B,C,D) copy_shallow_rel(A,B,C,D,NULL)
+
+#else /* !HALFWORD_HEAP */
+
 Uint size_object(Eterm);
+#  define size_object_rel(A,B) size_object(A)
+
 Eterm copy_struct(Eterm, Uint, Eterm**, ErlOffHeap*);
+#  define copy_struct_rel(OBJ,SZ,HPP,OH, SB,DB) copy_struct(OBJ,SZ,HPP,OH)
+
 Eterm copy_shallow(Eterm*, Uint, Eterm**, ErlOffHeap*);
+#  define copy_shallow_rel(A,B,C,D, BASE) copy_shallow(A,B,C,D)
+
+#endif
+
+
 void move_multi_frags(Eterm** hpp, ErlOffHeap*, ErlHeapFragment* first,
 		      Eterm* refs, unsigned nrefs);
 
@@ -1206,7 +1227,7 @@ ERTS_GLB_INLINE void
 erts_smp_port_unlock(Port *prt)
 {
 #ifdef ERTS_SMP
-    long refc;
+    erts_aint_t refc;
     erts_smp_mtx_unlock(prt->lock);
     refc = erts_smp_atomic_dectest(&prt->refc);
     ASSERT(refc >= 0);
@@ -1425,84 +1446,6 @@ void erl_drv_thr_init(void);
 
 /* time.c */
 
-ERTS_GLB_INLINE long do_time_read_and_reset(void);
-#ifdef ERTS_TIMER_THREAD
-ERTS_GLB_INLINE int next_time(void);
-ERTS_GLB_INLINE void bump_timer(long);
-#else
-int next_time(void);
-void bump_timer(long);
-extern erts_smp_atomic_t do_time;	/* set at clock interrupt */
-ERTS_GLB_INLINE void do_time_add(long);
-#endif
-
-#if ERTS_GLB_INLINE_INCL_FUNC_DEF
-
-#ifdef ERTS_TIMER_THREAD
-ERTS_GLB_INLINE long do_time_read_and_reset(void) { return 0; }
-ERTS_GLB_INLINE int next_time(void) { return -1; }
-ERTS_GLB_INLINE void bump_timer(long ignore) { }
-#else
-ERTS_GLB_INLINE long do_time_read_and_reset(void)
-{
-    return erts_smp_atomic_xchg(&do_time, 0L);
-}
-ERTS_GLB_INLINE void do_time_add(long elapsed)
-{
-    erts_smp_atomic_add(&do_time, elapsed);
-}
-#endif
-
-#endif /* #if ERTS_GLB_INLINE_INCL_FUNC_DEF */
-
-void init_time(void);
-void erl_set_timer(ErlTimer*, ErlTimeoutProc, ErlCancelProc, void*, Uint);
-void erl_cancel_timer(ErlTimer*);
-Uint time_left(ErlTimer *);
-
-Uint erts_timer_wheel_memory_size(void);
-
-#if (defined(HAVE_GETHRVTIME) || defined(HAVE_CLOCK_GETTIME))
-#  ifndef HAVE_ERTS_NOW_CPU
-#    define HAVE_ERTS_NOW_CPU
-#    ifdef HAVE_GETHRVTIME
-#      define erts_start_now_cpu() sys_start_hrvtime()
-#      define erts_stop_now_cpu()  sys_stop_hrvtime()
-#    endif
-#  endif
-void erts_get_now_cpu(Uint* megasec, Uint* sec, Uint* microsec);
-#endif
-
-void erts_get_timeval(SysTimeval *tv);
-long erts_get_time(void);
-
-extern SysTimeval erts_first_emu_time;
-
-void erts_get_emu_time(SysTimeval *);
-
-ERTS_GLB_INLINE int erts_cmp_timeval(SysTimeval *t1p, SysTimeval *t2p);
-
-#if ERTS_GLB_INLINE_INCL_FUNC_DEF
-
-ERTS_GLB_INLINE int
-erts_cmp_timeval(SysTimeval *t1p, SysTimeval *t2p)
-{
-    if (t1p->tv_sec == t2p->tv_sec) {
-	if (t1p->tv_usec < t2p->tv_usec)
-	    return -1;
-	else if (t1p->tv_usec > t2p->tv_usec)
-	    return 1;
-	return 0;
-    }
-    return t1p->tv_sec < t2p->tv_sec ? -1 : 1;
-}
-
-#endif
-
-#ifdef DEBUG
-void p_slpq(void);
-#endif
-
 /* utils.c */
 
 /*
@@ -1561,16 +1504,30 @@ void erts_init_utils_mem(void);
 erts_dsprintf_buf_t *erts_create_tmp_dsbuf(Uint);
 void erts_destroy_tmp_dsbuf(erts_dsprintf_buf_t *);
 
+#if HALFWORD_HEAP
+int eq_rel(Eterm a, Eterm* a_base, Eterm b, Eterm* b_base);
+#  define eq(A,B) eq_rel(A,NULL,B,NULL)
+#else
 int eq(Eterm, Eterm);
+#  define eq_rel(A,A_BASE,B,B_BASE) eq(A,B)
+#endif
+
 #define EQ(x,y) (((x) == (y)) || (is_not_both_immed((x),(y)) && eq((x),(y))))
 
+#if HALFWORD_HEAP
+Sint cmp_rel(Eterm, Eterm*, Eterm, Eterm*);
+#define CMP(A,B) cmp_rel(A,NULL,B,NULL)
+#else
 Sint cmp(Eterm, Eterm);
-#define cmp_lt(a,b)	(cmp((a),(b)) < 0)
-#define cmp_le(a,b)	(cmp((a),(b)) <= 0)
-#define cmp_eq(a,b)	(cmp((a),(b)) == 0)
-#define cmp_ne(a,b)	(cmp((a),(b)) != 0)
-#define cmp_ge(a,b)	(cmp((a),(b)) >= 0)
-#define cmp_gt(a,b)	(cmp((a),(b)) > 0)
+#define cmp_rel(A,A_BASE,B,B_BASE) cmp(A,B)
+#define CMP(A,B) cmp(A,B)
+#endif
+#define cmp_lt(a,b)	(CMP((a),(b)) < 0)
+#define cmp_le(a,b)	(CMP((a),(b)) <= 0)
+#define cmp_eq(a,b)	(CMP((a),(b)) == 0)
+#define cmp_ne(a,b)	(CMP((a),(b)) != 0)
+#define cmp_ge(a,b)	(CMP((a),(b)) >= 0)
+#define cmp_gt(a,b)	(CMP((a),(b)) > 0)
 
 #define CMP_LT(a,b)	((a) != (b) && cmp_lt((a),(b)))
 #define CMP_GE(a,b)	((a) == (b) || cmp_ge((a),(b)))
@@ -1695,10 +1652,14 @@ struct Sint_buf {
 };	
 char* Sint_to_buf(Sint, struct Sint_buf*);
 
+#define ERTS_IOLIST_OK 0
+#define ERTS_IOLIST_OVERFLOW 1
+#define ERTS_IOLIST_TYPE 2
+
 Eterm buf_to_intlist(Eterm**, char*, int, Eterm); /* most callers pass plain char*'s */
 int io_list_to_buf(Eterm, char*, int);
 int io_list_to_buf2(Eterm, char*, int);
-int io_list_len(Eterm);
+int erts_iolist_size(Eterm, Uint *);
 int is_string(Eterm);
 void erl_at_exit(void (*) (void*), void*);
 Eterm collect_memory(Process *);
@@ -1742,6 +1703,7 @@ Uint erts_current_reductions(Process* current, Process *p);
 
 int erts_print_system_version(int to, void *arg, Process *c_p);
 
+int erts_hibernate(Process* c_p, Eterm module, Eterm function, Eterm args, Eterm* reg);
 #define seq_trace_output(token, msg, type, receiver, process) \
 seq_trace_output_generic((token), (msg), (type), (receiver), (process), NIL)
 #define seq_trace_output_exit(token, msg, type, receiver, exitfrom) \
@@ -1799,8 +1761,15 @@ do {								\
 extern Binary *erts_match_set_compile(Process *p, Eterm matchexpr);
 Eterm erts_match_set_lint(Process *p, Eterm matchexpr); 
 extern void erts_match_set_release_result(Process* p);
+
+enum erts_pam_run_flags {
+    ERTS_PAM_TMP_RESULT=0,
+    ERTS_PAM_COPY_RESULT=1,
+    ERTS_PAM_CONTIGUOUS_TUPLE=2
+};
 extern Eterm erts_match_set_run(Process *p, Binary *mpsp, 
 				Eterm *args, int num_args,
+				enum erts_pam_run_flags in_flags,
 				Uint32 *return_flags);
 extern Eterm erts_match_set_get_source(Binary *mpsp);
 extern void erts_match_prog_foreach_offheap(Binary *b,
@@ -1862,7 +1831,7 @@ erts_alloc_message_heap(Uint size,
 #endif
 
     if (size > (Uint) INT_MAX)
-	erl_exit(ERTS_ABORT_EXIT, "HUGE size (%bpu)\n", size);
+	erl_exit(ERTS_ABORT_EXIT, "HUGE size (%beu)\n", size);
 
     if (
 #if defined(ERTS_SMP)
@@ -1924,6 +1893,8 @@ erts_alloc_message_heap(Uint size,
 #  if defined(DEBUG)
 #    define DeclareTmpHeap(VariableName,Size,Process) \
        Eterm *VariableName = erts_debug_allocate_tmp_heap(Size,Process)
+#    define DeclareTypedTmpHeap(Type,VariableName,Process)		\
+      Type *VariableName = (Type *) erts_debug_allocate_tmp_heap(sizeof(Type)/sizeof(Eterm),Process)
 #    define DeclareTmpHeapNoproc(VariableName,Size) \
        Eterm *VariableName = erts_debug_allocate_tmp_heap(Size,NULL)
 #    define UseTmpHeap(Size,Proc) \
@@ -1945,6 +1916,8 @@ erts_alloc_message_heap(Uint size,
 #  else
 #    define DeclareTmpHeap(VariableName,Size,Process) \
        Eterm *VariableName = (ERTS_PROC_GET_SCHDATA(Process)->tmp_heap)+(ERTS_PROC_GET_SCHDATA(Process)->num_tmp_heap_used)
+#    define DeclareTypedTmpHeap(Type,VariableName,Process)		\
+      Type *VariableName = (Type *) (ERTS_PROC_GET_SCHDATA(Process)->tmp_heap)+(ERTS_PROC_GET_SCHDATA(Process)->num_tmp_heap_used)
 #    define DeclareTmpHeapNoproc(VariableName,Size) \
        Eterm *VariableName = (erts_get_scheduler_data()->tmp_heap)+(erts_get_scheduler_data()->num_tmp_heap_used)
 #    define UseTmpHeap(Size,Proc) \
@@ -1970,6 +1943,8 @@ erts_alloc_message_heap(Uint size,
 #else
 #  define DeclareTmpHeap(VariableName,Size,Process) \
      Eterm VariableName[Size]
+#  define DeclareTypedTmpHeap(Type,VariableName,Process)	\
+     Type VariableName[1]
 #  define DeclareTmpHeapNoproc(VariableName,Size) \
      Eterm VariableName[Size]
 #  define UseTmpHeap(Size,Proc) /* Nothing */

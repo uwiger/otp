@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 1996-2010. All Rights Reserved.
+ * Copyright Ericsson AB 1996-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -56,7 +56,6 @@ static erts_smp_tsd_key_t driver_list_last_error_key;  /* Save last DDLL error o
 							  per thread basis (for BC interfaces) */
 
 Port*      erts_port; /* The port table */
-erts_smp_atomic_t erts_ports_alive;
 erts_smp_atomic_t erts_bytes_out;	/* No bytes sent out of the system */
 erts_smp_atomic_t erts_bytes_in;	/* No bytes gotten into the system */
 
@@ -81,6 +80,9 @@ static void driver_monitor_unlock_pdl(Port *p);
 #define DRV_MONITOR_LOCK_PDL(Port) /* nothing */
 #define DRV_MONITOR_UNLOCK_PDL(Port) /* nothing */
 #endif
+
+#define ERL_SMALL_IO_BIN_LIMIT (4*ERL_ONHEAP_BIN_LIMIT)
+#define SMALL_WRITE_VEC  16
 
 static ERTS_INLINE ErlIOQueue*
 drvport2ioq(ErlDrvPort drvport)
@@ -190,7 +192,7 @@ typedef struct line_buf_context {
 static erts_smp_spinlock_t get_free_port_lck;
 static Uint last_port_num;
 static Uint port_num_mask;
-erts_smp_atomic_t erts_ports_snapshot; /* Identifies the _next_ snapshot (not the ongoing) */
+erts_smp_atomic32_t erts_ports_snapshot; /* Identifies the _next_ snapshot (not the ongoing) */
 
 
 static ERTS_INLINE void
@@ -421,14 +423,13 @@ setup_port(Port* prt, Eterm pid, erts_driver_t *driver,
     new_name = (char*) erts_alloc(ERTS_ALC_T_PORT_NAME, sys_strlen(name)+1);
     sys_strcpy(new_name, name);
     erts_smp_runq_lock(runq);
-    erts_smp_atomic_inc(&erts_ports_alive);
     erts_smp_port_state_lock(prt);    
     prt->status = ERTS_PORT_SFLG_CONNECTED | xstatus;
-    prt->snapshot = (Uint32) erts_smp_atomic_read(&erts_ports_snapshot);    
+    prt->snapshot = erts_smp_atomic32_read(&erts_ports_snapshot);    
     old_name = prt->name;
     prt->name = new_name;
 #ifdef ERTS_SMP
-    erts_smp_atomic_set(&prt->run_queue, (long) runq);
+    erts_smp_atomic_set(&prt->run_queue, (erts_aint_t) runq);
 #endif
     ASSERT(!prt->drv_ptr);
     prt->drv_ptr = driver;
@@ -670,7 +671,7 @@ erts_open_driver(erts_driver_t* driver,	/* Pointer to driver. */
 #ifdef ERTS_SMP
 	erts_cancel_smp_ptimer(port->ptimer);
 #else
-	erl_cancel_timer(&(port->tm));
+	erts_cancel_timer(&(port->tm));
 #endif
 	stopq(port);
 	kill_port(port);
@@ -954,13 +955,14 @@ do {									\
     int _bitoffs;							\
     int _bitsize;							\
     ERTS_GET_REAL_BIN(obj, _real, _offset, _bitoffs, _bitsize);		\
-    ASSERT(_bitsize == 0);						\
+    if (_bitsize != 0) goto L_type_error;				\
     if (thing_subtag(*binary_val(_real)) == REFC_BINARY_SUBTAG &&	\
 	_bitoffs == 0) {						\
 	b_size += _size;						\
+        if (b_size < _size) goto L_overflow_error;			\
 	in_clist = 0;							\
 	v_size++;							\
-        if (_size >= bin_limit) {					\
+        if (_size >= ERL_SMALL_IO_BIN_LIMIT) {				\
             p_in_clist = 0;						\
             p_v_size++;							\
         } else {							\
@@ -972,6 +974,7 @@ do {									\
         }								\
     } else {								\
 	c_size += _size;						\
+        if (c_size < _size) goto L_overflow_error;			\
 	if (!in_clist) {						\
 	    in_clist = 1;						\
 	    v_size++;							\
@@ -986,29 +989,30 @@ do {									\
 
 
 /* 
-** Size of a io list in bytes
-** return -1 if error
-** returns:            - Total size of io list
-**           vsize     - SysIOVec size needed for a writev
-**           csize     - Number of bytes not in binary (in the common binary)
-**           pvsize    - SysIOVec size needed if packing small binaries
-**           pcsize    - Number of bytes in the common binary if packing
-*/
+ * Returns 0 if successful and a non-zero value otherwise.
+ *
+ * Return values through pointers:
+ *    *vsize      - SysIOVec size needed for a writev
+ *    *csize      - Number of bytes not in binary (in the common binary)
+ *    *pvsize     - SysIOVec size needed if packing small binaries
+ *    *pcsize     - Number of bytes in the common binary if packing
+ *    *total_size - Total size of iolist in bytes
+ */
 
 static int 
-io_list_vec_len(Eterm obj, int* vsize, int* csize, 
-		int bin_limit, /* small binaries limit */
-		int * pvsize, int * pcsize)
+io_list_vec_len(Eterm obj, Uint* vsize, Uint* csize,
+		Uint* pvsize, Uint* pcsize, Uint* total_size)
 {
     DECLARE_ESTACK(s);
     Eterm* objp;
-    int v_size = 0;
-    int c_size = 0;
-    int b_size = 0;
-    int in_clist = 0;
-    int p_v_size = 0;
-    int p_c_size = 0;
-    int p_in_clist = 0;
+    Uint v_size = 0;
+    Uint c_size = 0;
+    Uint b_size = 0;
+    Uint in_clist = 0;
+    Uint p_v_size = 0;
+    Uint p_c_size = 0;
+    Uint p_in_clist = 0;
+    Uint total;
 
     goto L_jump_start;  /* avoid a push */
 
@@ -1022,6 +1026,9 @@ io_list_vec_len(Eterm obj, int* vsize, int* csize,
 
 	    if (is_byte(obj)) {
 		c_size++;
+		if (c_size == 0) {
+		    goto L_overflow_error;
+		}
 		if (!in_clist) {
 		    in_clist = 1;
 		    v_size++;
@@ -1061,32 +1068,31 @@ io_list_vec_len(Eterm obj, int* vsize, int* csize,
 	}
     }
 
+    total = c_size + b_size;
+    if (total < c_size) {
+	goto L_overflow_error;
+    }
+    *total_size = total;
+
     DESTROY_ESTACK(s);
-    if (vsize != NULL)
-	*vsize = v_size;
-    if (csize != NULL)
-	*csize = c_size;
-    if (pvsize != NULL)
-	*pvsize = p_v_size;
-    if (pcsize != NULL)
-	*pcsize = p_c_size;
-    return c_size + b_size;
+    *vsize = v_size;
+    *csize = c_size;
+    *pvsize = p_v_size;
+    *pcsize = p_c_size;
+    return 0;
 
  L_type_error:
+ L_overflow_error:
     DESTROY_ESTACK(s);
-    return -1;
+    return 1;
 }
-
-#define ERL_SMALL_IO_BIN_LIMIT (4*ERL_ONHEAP_BIN_LIMIT)
-#define SMALL_WRITE_VEC  16
-
 
 /* write data to a port */
 int erts_write_to_port(Eterm caller_id, Port *p, Eterm list)
 {
     char *buf;
     erts_driver_t *drv = p->drv_ptr;
-    int size;
+    Uint size;
     int fpe_was_unmasked;
     
     ERTS_SMP_LC_ASSERT(erts_lc_is_port_locked(p));
@@ -1094,10 +1100,10 @@ int erts_write_to_port(Eterm caller_id, Port *p, Eterm list)
 
     p->caller = caller_id;
     if (drv->outputv != NULL) {
-	int vsize;
-	int csize;
-	int pvsize;
-	int pcsize;
+	Uint vsize;
+	Uint csize;
+	Uint pvsize;
+	Uint pcsize;
 	int blimit;
 	SysIOVec iv[SMALL_WRITE_VEC];
 	ErlDrvBinary* bv[SMALL_WRITE_VEC];
@@ -1106,9 +1112,8 @@ int erts_write_to_port(Eterm caller_id, Port *p, Eterm list)
 	ErlDrvBinary* cbin;
 	ErlIOVec ev;
 
-	if ((size = io_list_vec_len(list, &vsize, &csize, 
-				    ERL_SMALL_IO_BIN_LIMIT,
-				    &pvsize, &pcsize)) < 0) {
+	if (io_list_vec_len(list, &vsize, &csize,
+			    &pvsize, &pcsize, &size)) {
 	    goto bad_value;
 	}
 	/* To pack or not to pack (small binaries) ...? */
@@ -1183,7 +1188,7 @@ int erts_write_to_port(Eterm caller_id, Port *p, Eterm list)
 	else {
 	    ASSERT(r == -1); /* Overflow */
 	    erts_free(ERTS_ALC_T_TMP, buf);
-	    if ((size = io_list_len(list)) < 0) {
+	    if (erts_iolist_size(list, &size)) {
 		goto bad_value;
 	    }
 
@@ -1226,7 +1231,6 @@ void init_io(void)
 {
     int i;
     ErlDrvEntry** dp;
-    ErlDrvEntry* drv;
     char maxports[21]; /* enough for any 64-bit integer */
     size_t maxportssize = sizeof(maxports);
     Uint ports_bits = ERTS_PORTS_BITS;
@@ -1275,7 +1279,6 @@ void init_io(void)
 
     erts_smp_atomic_init(&erts_bytes_out, 0);
     erts_smp_atomic_init(&erts_bytes_in, 0);
-    erts_smp_atomic_init(&erts_ports_alive, 0);
 
     for (i = 0; i < erts_max_ports; i++) {
 	erts_port_task_init_sched(&erts_port[i].sched);
@@ -1297,7 +1300,7 @@ void init_io(void)
 	erts_port[i].port_data_lock = NULL;
     }
 
-    erts_smp_atomic_init(&erts_ports_snapshot, (long) 0);
+    erts_smp_atomic32_init(&erts_ports_snapshot, (erts_aint32_t) 0);
     last_port_num = 0;
     erts_smp_spinlock_init(&get_free_port_lck, "get_free_port");
 
@@ -1309,10 +1312,8 @@ void init_io(void)
     init_driver(&fd_driver, &fd_driver_entry, NULL);
     init_driver(&vanilla_driver, &vanilla_driver_entry, NULL);
     init_driver(&spawn_driver, &spawn_driver_entry, NULL);
-    for (dp = driver_tab; *dp != NULL; dp++) {
-	drv = *dp;
+    for (dp = driver_tab; *dp != NULL; dp++)
 	erts_add_driver_entry(*dp, NULL, 1);
-    }
 
     erts_smp_tsd_set(driver_list_lock_status_key, NULL);
     erts_smp_mtx_unlock(&erts_driver_list_lock);
@@ -1839,7 +1840,7 @@ terminate_port(Port *prt)
 #ifdef ERTS_SMP
     erts_cancel_smp_ptimer(prt->ptimer);
 #else
-    erl_cancel_timer(&prt->tm);
+    erts_cancel_timer(&prt->tm);
 #endif
 
     drv = prt->drv_ptr;
@@ -2150,7 +2151,7 @@ erts_port_control(Process* p, Port* prt, Uint command, Eterm iolist)
     byte* to_port = NULL;	/* Buffer to write to port. */
 				/* Initialization is for shutting up
 				   warning about use before set. */
-    int to_len = 0;		/* Length of buffer. */
+    Uint to_len = 0;		/* Length of buffer. */
     int must_free = 0;		/* True if the buffer should be freed. */
     char port_result[ERL_ONHEAP_BIN_LIMIT];  /* Default buffer for result from port. */
     char* port_resp;		/* Pointer to result buffer. */
@@ -2195,7 +2196,7 @@ erts_port_control(Process* p, Port* prt, Uint command, Eterm iolist)
 	} else {
 	    ASSERT(r == -1);	/* Overflow */
 	    erts_free(ERTS_ALC_T_TMP, (void *) to_port);
-	    if ((to_len = io_list_len(iolist)) < 0) { /* Type error */
+	    if (erts_iolist_size(iolist, &to_len)) { /* Type error */
 		return THE_NON_VALUE;
 	    }
 	    must_free = 1;
@@ -2420,7 +2421,7 @@ void erts_raw_port_command(Port* p, byte* buf, Uint len)
 
     if (len > (Uint) INT_MAX)
 	erl_exit(ERTS_ABORT_EXIT,
-		 "Absurdly large data buffer (%bpu bytes) passed to"
+		 "Absurdly large data buffer (%beu bytes) passed to"
 		 "output callback of %s driver.\n",
 		 len,
 		 p->drv_ptr->name ? p->drv_ptr->name : "unknown");
@@ -3252,7 +3253,7 @@ int driver_output_binary(ErlDrvPort ix, char* hbuf, int hlen,
 	return 0;
 
     prt->bytes_in += (hlen + len);
-    erts_smp_atomic_add(&erts_bytes_in, (long) (hlen + len));
+    erts_smp_atomic_add(&erts_bytes_in, (erts_aint_t) (hlen + len));
     if (prt->status & ERTS_PORT_SFLG_DISTRIBUTION) {
 	return erts_net_message(prt,
 				prt->dist_entry,
@@ -3287,7 +3288,7 @@ int driver_output2(ErlDrvPort ix, char* hbuf, int hlen, char* buf, int len)
 	return 0;
     
     prt->bytes_in += (hlen + len);
-    erts_smp_atomic_add(&erts_bytes_in, (long) (hlen + len));
+    erts_smp_atomic_add(&erts_bytes_in, (erts_aint_t) (hlen + len));
     if (prt->status & ERTS_PORT_SFLG_DISTRIBUTION) {
 	if (len == 0)
 	    return erts_net_message(prt,
@@ -3364,7 +3365,7 @@ int driver_outputv(ErlDrvPort ix, char* hbuf, int hlen, ErlIOVec* vec, int skip)
 
     /* XXX handle distribution !!! */
     prt->bytes_in += (hlen + size);
-    erts_smp_atomic_add(&erts_bytes_in, (long) (hlen + size));
+    erts_smp_atomic_add(&erts_bytes_in, (erts_aint_t) (hlen + size));
     deliver_vec_message(prt, prt->connected, hbuf, hlen, binv, iov, n, size);
     return 0;
 }
@@ -3408,25 +3409,25 @@ int len;
  * reference count on driver binaries...
  */
 
-long
+ErlDrvSInt
 driver_binary_get_refc(ErlDrvBinary *dbp)
 {
     Binary* bp = ErlDrvBinary2Binary(dbp);
-    return erts_refc_read(&bp->refc, 1);
+    return (ErlDrvSInt) erts_refc_read(&bp->refc, 1);
 }
 
-long
+ErlDrvSInt
 driver_binary_inc_refc(ErlDrvBinary *dbp)
 {
     Binary* bp = ErlDrvBinary2Binary(dbp);
-    return erts_refc_inctest(&bp->refc, 2);
+    return (ErlDrvSInt) erts_refc_inctest(&bp->refc, 2);
 }
 
-long
+ErlDrvSInt
 driver_binary_dec_refc(ErlDrvBinary *dbp)
 {
     Binary* bp = ErlDrvBinary2Binary(dbp);
-    return erts_refc_dectest(&bp->refc, 1);
+    return (ErlDrvSInt) erts_refc_dectest(&bp->refc, 1);
 }
 
 
@@ -3541,12 +3542,12 @@ pdl_init_refc(ErlDrvPDL pdl)
     erts_atomic_init(&pdl->refc, 1);
 }
 
-static ERTS_INLINE long
+static ERTS_INLINE ErlDrvSInt
 pdl_read_refc(ErlDrvPDL pdl)
 {
-    long refc = erts_atomic_read(&pdl->refc);
+    erts_aint_t refc = erts_atomic_read(&pdl->refc);
     ERTS_LC_ASSERT(refc >= 0);
-    return refc;
+    return (ErlDrvSInt) refc;
 }
 
 static ERTS_INLINE void
@@ -3556,12 +3557,12 @@ pdl_inc_refc(ErlDrvPDL pdl)
     ERTS_LC_ASSERT(driver_pdl_get_refc(pdl) > 1);
 }
 
-static ERTS_INLINE long
+static ERTS_INLINE ErlDrvSInt
 pdl_inctest_refc(ErlDrvPDL pdl)
 {
-    long refc = erts_atomic_inctest(&pdl->refc);
+    erts_aint_t refc = erts_atomic_inctest(&pdl->refc);
     ERTS_LC_ASSERT(refc > 1);
-    return refc;
+    return (ErlDrvSInt) refc;
 }
 
 #if 0 /* unused */
@@ -3573,12 +3574,12 @@ pdl_dec_refc(ErlDrvPDL pdl)
 }
 #endif
 
-static ERTS_INLINE long
+static ERTS_INLINE ErlDrvSInt
 pdl_dectest_refc(ErlDrvPDL pdl)
 {
-    long refc = erts_atomic_dectest(&pdl->refc);
+    erts_aint_t refc = erts_atomic_dectest(&pdl->refc);
     ERTS_LC_ASSERT(refc >= 0);
-    return refc;
+    return (ErlDrvSInt) refc;
 }
 
 static ERTS_INLINE void pdl_destroy(ErlDrvPDL pdl)
@@ -3649,7 +3650,7 @@ driver_pdl_lock(ErlDrvPDL pdl)
 void
 driver_pdl_unlock(ErlDrvPDL pdl)
 {
-    long refc;
+    ErlDrvSInt refc;
 #ifdef HARDDEBUG
     erts_fprintf(stderr, "driver_pdl_unlock(0x%08X)\r\n",(unsigned) pdl);
 #endif
@@ -3659,28 +3660,30 @@ driver_pdl_unlock(ErlDrvPDL pdl)
 	pdl_destroy(pdl);
 }
 
-long
+ErlDrvSInt
 driver_pdl_get_refc(ErlDrvPDL pdl)
 {
     return pdl_read_refc(pdl);
 }
 
-long
+ErlDrvSInt
 driver_pdl_inc_refc(ErlDrvPDL pdl)
 {
-    long refc = pdl_inctest_refc(pdl);
+    ErlDrvSInt refc = pdl_inctest_refc(pdl);
 #ifdef HARDDEBUG
-    erts_fprintf(stderr, "driver_pdl_inc_refc(0x%08X) -> %ld\r\n",(unsigned) pdl, refc);
+    erts_fprintf(stderr, "driver_pdl_inc_refc(%p) -> %bed\r\n",
+		 pdl, refc);
 #endif
     return refc;
 }
 
-long
+ErlDrvSInt
 driver_pdl_dec_refc(ErlDrvPDL pdl)
 {
-    long refc = pdl_dectest_refc(pdl);
+    ErlDrvSInt refc = pdl_dectest_refc(pdl);
 #ifdef HARDDEBUG
-    erts_fprintf(stderr, "driver_pdl_dec_refc(0x%08X) -> %ld\r\n",(unsigned) pdl, refc);
+    erts_fprintf(stderr, "driver_pdl_dec_refc(%p) -> %bpd\r\n",
+		 pdl, refc);
 #endif
     if (!refc)
 	pdl_destroy(pdl);
@@ -4066,7 +4069,7 @@ drv_cancel_timer(Port *prt)
 #ifdef ERTS_SMP
     erts_cancel_smp_ptimer(prt->ptimer);
 #else
-    erl_cancel_timer(&prt->tm);
+    erts_cancel_timer(&prt->tm);
 #endif
     if (erts_port_task_is_scheduled(&prt->timeout_task))
 	erts_port_task_abort(prt->id, &prt->timeout_task);
@@ -4090,7 +4093,7 @@ int driver_set_timer(ErlDrvPort ix, UWord t)
 			   (ErlTimeoutProc) schedule_port_timeout,
 			   t);
 #else
-    erl_set_timer(&prt->tm,
+    erts_set_timer(&prt->tm,
 		  (ErlTimeoutProc) schedule_port_timeout,
 		  NULL,
 		  prt,
@@ -4121,9 +4124,9 @@ driver_read_timer(ErlDrvPort ix, unsigned long* t)
 	return -1;
     ERTS_SMP_LC_ASSERT(erts_lc_is_port_locked(prt));
 #ifdef ERTS_SMP
-    *t = prt->ptimer ? time_left(&prt->ptimer->timer.tm) : 0;
+    *t = prt->ptimer ? erts_time_left(&prt->ptimer->timer.tm) : 0;
 #else
-    *t = time_left(&prt->tm);
+    *t = erts_time_left(&prt->tm);
 #endif
     return 0;
 }

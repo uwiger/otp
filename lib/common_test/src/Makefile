@@ -1,7 +1,7 @@
 #
 # %CopyrightBegin%
 #
-# Copyright Ericsson AB 2003-2010. All Rights Reserved.
+# Copyright Ericsson AB 2003-2011. All Rights Reserved.
 #
 # The contents of this file are subject to the Erlang Public License,
 # Version 1.1, (the "License"); you may not use this file except in
@@ -67,7 +67,9 @@ MODULES= \
 	ct_config \
 	ct_config_plain \
 	ct_config_xml \
-	ct_slave
+	ct_slave \
+        ct_hooks\
+        ct_hooks_lock
 
 TARGET_MODULES= $(MODULES:%=$(EBIN)/%)
 

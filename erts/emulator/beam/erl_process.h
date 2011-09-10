@@ -1,7 +1,7 @@
 /*
  * %CopyrightBegin%
  *
- * Copyright Ericsson AB 1996-2010. All Rights Reserved.
+ * Copyright Ericsson AB 1996-2011. All Rights Reserved.
  *
  * The contents of this file are subject to the Erlang Public License,
  * Version 1.1, (the "License"); you may not use this file except in
@@ -26,6 +26,12 @@
      || (ERTS_GLB_INLINE_INCL_FUNC_DEF \
 	 && defined(ERTS_DO_INCL_GLB_INLINE_FUNC_DEF)))
 #define ERTS_INCLUDE_SCHEDULER_INTERNALS
+#endif
+
+/* #define ERTS_DO_VERIFY_UNUSED_TEMP_ALLOC */
+
+#if !defined(ERTS_DO_VERIFY_UNUSED_TEMP_ALLOC) && defined(DEBUG)
+#  define ERTS_DO_VERIFY_UNUSED_TEMP_ALLOC
 #endif
 
 typedef struct process Process;
@@ -174,8 +180,8 @@ extern int erts_sched_thread_suggested_stack_size;
 #define ERTS_UNSET_RUNQ_FLG_EVACUATE(FLGS, PRIO) \
   ((FLGS) &= ~ERTS_RUNQ_FLG_EVACUATE((PRIO)))
 
-#define ERTS_RUNQ_IFLG_SUSPENDED		(((long) 1) << 0)
-#define ERTS_RUNQ_IFLG_NONEMPTY			(((long) 1) << 1)
+#define ERTS_RUNQ_IFLG_SUSPENDED		(((erts_aint32_t) 1) << 0)
+#define ERTS_RUNQ_IFLG_NONEMPTY			(((erts_aint32_t) 1) << 1)
 
 
 #ifdef DEBUG
@@ -219,11 +225,11 @@ typedef enum {
     ERTS_MIGRATE_FAILED_RUNQ_SUSPENDED
 } ErtsMigrateResult;
 
-#define ERTS_SSI_FLG_SLEEPING		(((long) 1) << 0)
-#define ERTS_SSI_FLG_POLL_SLEEPING 	(((long) 1) << 1)
-#define ERTS_SSI_FLG_TSE_SLEEPING 	(((long) 1) << 2)
-#define ERTS_SSI_FLG_WAITING		(((long) 1) << 3)
-#define ERTS_SSI_FLG_SUSPENDED	 	(((long) 1) << 4)
+#define ERTS_SSI_FLG_SLEEPING		(((erts_aint32_t) 1) << 0)
+#define ERTS_SSI_FLG_POLL_SLEEPING 	(((erts_aint32_t) 1) << 1)
+#define ERTS_SSI_FLG_TSE_SLEEPING 	(((erts_aint32_t) 1) << 2)
+#define ERTS_SSI_FLG_WAITING		(((erts_aint32_t) 1) << 3)
+#define ERTS_SSI_FLG_SUSPENDED	 	(((erts_aint32_t) 1) << 4)
 
 #define ERTS_SSI_FLGS_SLEEP_TYPE			\
  (ERTS_SSI_FLG_TSE_SLEEPING|ERTS_SSI_FLG_POLL_SLEEPING)
@@ -236,16 +242,14 @@ typedef enum {
   | ERTS_SSI_FLG_WAITING				\
   | ERTS_SSI_FLG_SUSPENDED)
 
-
-#if !defined(ERTS_SCHED_NEED_BLOCKABLE_AUX_WORK) \
-    && defined(ERTS_SMP_SCHEDULERS_NEED_TO_CHECK_CHILDREN)
 #define ERTS_SCHED_NEED_BLOCKABLE_AUX_WORK
-#endif
 
-#define ERTS_SSI_AUX_WORK_CHECK_CHILDREN	(((long) 1) << 0)
+#define ERTS_SSI_AUX_WORK_CHECK_CHILDREN	(((erts_aint32_t) 1) << 0)
+#define ERTS_SSI_AUX_WORK_MISC			(((erts_aint32_t) 1) << 1)
 
 #define ERTS_SSI_BLOCKABLE_AUX_WORK_MASK \
-  (ERTS_SSI_AUX_WORK_CHECK_CHILDREN)
+  (ERTS_SSI_AUX_WORK_CHECK_CHILDREN \
+   | ERTS_SSI_AUX_WORK_MISC)
 #define ERTS_SSI_NONBLOCKABLE_AUX_WORK_MASK \
   (0)
 
@@ -259,9 +263,9 @@ typedef struct {
 struct ErtsSchedulerSleepInfo_ {
     ErtsSchedulerSleepInfo *next;
     ErtsSchedulerSleepInfo *prev;
-    erts_smp_atomic_t flags;
+    erts_smp_atomic32_t flags;
     erts_tse_t *event;
-    erts_smp_atomic_t aux_work;
+    erts_smp_atomic32_t aux_work;
 };
 
 /* times to reschedule low prio process before running */
@@ -311,7 +315,7 @@ typedef struct {
 
 struct ErtsRunQueue_ {
     int ix;
-    erts_smp_atomic_t info_flags;
+    erts_smp_atomic32_t info_flags;
 
     erts_smp_mtx_t mtx;
     erts_smp_cnd_t cnd;
@@ -421,7 +425,12 @@ struct ErtsSchedulerData_ {
 
 #ifdef ERTS_SMP
     /* NOTE: These fields are modified under held mutexes by other threads */
-    erts_smp_atomic_t chk_cpu_bind; /* Only used when common run queue */
+    erts_smp_atomic32_t chk_cpu_bind; /* Only used when common run queue */
+#endif
+
+#ifdef ERTS_DO_VERIFY_UNUSED_TEMP_ALLOC
+    erts_alloc_verify_func_t verify_unused_temp_alloc;
+    Allctr_t *verify_unused_temp_alloc_data;
 #endif
 };
 
@@ -826,7 +835,7 @@ ERTS_GLB_INLINE void erts_heap_frag_shrink(Process* p, Eterm* hp)
 }	
 #endif /* inline */
 
-Eterm* erts_heap_alloc(Process* p, Uint need);
+Eterm* erts_heap_alloc(Process* p, Uint need, Uint xtra);
 #ifdef CHECK_FOR_HOLES
 Eterm* erts_set_hole_marker(Eterm* ptr, Uint sz);
 #endif
@@ -886,6 +895,7 @@ extern struct erts_system_profile_flags_t erts_system_profile_flags;
 #define F_HAVE_BLCKD_MSCHED  (1 <<  8) /* Process has blocked multi-scheduling */
 #define F_P2PNR_RESCHED      (1 <<  9) /* Process has been rescheduled via erts_pid2proc_not_running() */
 #define F_FORCE_GC           (1 << 10) /* Force gc at process in-scheduling */
+#define F_HIBERNATE_SCHED    (1 << 11) /* Schedule out after hibernate op */
 
 /* process trace_flags */
 #define F_SENSITIVE          (1 << 0)
@@ -1034,6 +1044,7 @@ int erts_sched_set_wakeup_limit(char *str);
 #ifdef DEBUG
 void erts_dbg_multi_scheduling_return_trap(Process *, Eterm);
 #endif
+int erts_get_max_no_executing_schedulers(void);
 #ifdef ERTS_SMP
 ErtsSchedSuspendResult
 erts_schedulers_state(Uint *, Uint *, Uint *, int);
@@ -1048,6 +1059,11 @@ int erts_is_multi_scheduling_blocked(void);
 Eterm erts_multi_scheduling_blockers(Process *);
 void erts_start_schedulers(void);
 void erts_smp_notify_check_children_needed(void);
+void
+erts_smp_schedule_misc_aux_work(int ignore_self,
+				int max_sched,
+				void (*func)(void *),
+				void *arg);
 #endif
 void erts_sched_notify_check_cpu_bind(void);
 Uint erts_active_schedulers(void);
@@ -1139,6 +1155,20 @@ Uint erts_debug_nbalance(void);
 #else
 #  define ERTS_GET_SCHEDULER_DATA_FROM_PROC(PROC) (erts_scheduler_data)
 #  define ERTS_PROC_GET_SCHDATA(PROC) (erts_scheduler_data)
+#endif
+
+#ifdef ERTS_DO_VERIFY_UNUSED_TEMP_ALLOC
+#  define ERTS_VERIFY_UNUSED_TEMP_ALLOC(P)					\
+do {										\
+    ErtsSchedulerData *esdp__ = ((P)						\
+				 ? ERTS_PROC_GET_SCHDATA((Process *) (P))	\
+				 : erts_get_scheduler_data());			\
+    if (esdp__)									\
+	esdp__->verify_unused_temp_alloc(					\
+	    esdp__->verify_unused_temp_alloc_data);				\
+} while (0)
+#else
+#  define ERTS_VERIFY_UNUSED_TEMP_ALLOC(ESDP)
 #endif
 
 #if defined(ERTS_SMP) || defined(USE_THREADS)
@@ -1505,6 +1535,10 @@ erts_get_atom_cache_map(Process *c_p)
 }
 #endif
 
+Process *erts_pid2proc_suspend(Process *,
+			       ErtsProcLocks,
+			       Eterm,
+			       ErtsProcLocks);
 #ifdef ERTS_SMP
 
 Process *erts_pid2proc_not_running(Process *,
@@ -1555,7 +1589,7 @@ extern int erts_disable_proc_not_running_opt;
 void erts_smp_notify_inc_runq(ErtsRunQueue *runq);
 
 #ifdef ERTS_SMP
-void erts_sched_finish_poke(ErtsSchedulerSleepInfo *, long);
+void erts_sched_finish_poke(ErtsSchedulerSleepInfo *, erts_aint32_t);
 ERTS_GLB_INLINE void erts_sched_poke(ErtsSchedulerSleepInfo *ssi);
 
 #if ERTS_GLB_INLINE_INCL_FUNC_DEF
@@ -1563,11 +1597,13 @@ ERTS_GLB_INLINE void erts_sched_poke(ErtsSchedulerSleepInfo *ssi);
 ERTS_GLB_INLINE void
 erts_sched_poke(ErtsSchedulerSleepInfo *ssi)
 {
-    long flags = erts_smp_atomic_read(&ssi->flags);
+    erts_aint32_t flags;
+    ERTS_THR_MEMORY_BARRIER;
+    flags = erts_smp_atomic32_read(&ssi->flags);
     ASSERT(!(flags & ERTS_SSI_FLG_SLEEPING)
 	   || (flags & ERTS_SSI_FLG_WAITING));
     if (flags & ERTS_SSI_FLG_SLEEPING) {
-	flags = erts_smp_atomic_band(&ssi->flags, ~ERTS_SSI_FLGS_SLEEP);
+	flags = erts_smp_atomic32_band(&ssi->flags, ~ERTS_SSI_FLGS_SLEEP);
 	erts_sched_finish_poke(ssi, flags);
     }
 }

@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2008-2010. All Rights Reserved.
+%% Copyright Ericsson AB 2008-2011. All Rights Reserved.
 %%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
@@ -28,7 +28,7 @@
 
 -compile(export_all).
 
--include_lib("test_server/include/test_server.hrl").
+-include_lib("common_test/include/ct.hrl").
 
 %-include_lib("common_test/include/ct_event.hrl").
 
@@ -56,11 +56,20 @@ init_per_testcase(TestCase, Config) ->
 end_per_testcase(TestCase, Config) ->
     ct_test_support:end_per_testcase(TestCase, Config).
 
-all(doc) -> 
-    [];
+suite() -> [{ct_hooks,[ts_install_cth]}].
 
-all(suite) -> 
+all() -> 
     [start_stop, results].
+
+groups() -> 
+    [].
+
+init_per_group(_GroupName, Config) ->
+    Config.
+
+end_per_group(_GroupName, Config) ->
+	Config.
+
 
 
 %%--------------------------------------------------------------------
@@ -93,8 +102,9 @@ start_stop(Config) when is_list(Config) ->
     Events = ct_test_support:get_events(ERPid, Config),    
 
     ct_test_support:log_events(start_stop, 
-			       ct_test_support:reformat(Events, eh_A), 
-			       ?config(priv_dir, Config)),
+			       ct_test_support:reformat(Events, eh_A),
+			       ?config(priv_dir, Config),
+			       Opts),
     
     TestEvents =
 	[{eh_A,start_logging,{'DEF','RUNDIR'}},
@@ -139,8 +149,9 @@ results(Config) when is_list(Config) ->
     Events = ct_test_support:get_events(ERPid, Config),
     
     ct_test_support:log_events(results, 
-			       ct_test_support:reformat(Events, eh_A), 
-			       ?config(priv_dir, Config)),
+			       ct_test_support:reformat(Events, eh_A),
+			       ?config(priv_dir, Config),
+			       Opts),
 
     TestEvents =
 	[{eh_A,start_logging,{'DEF','RUNDIR'}},

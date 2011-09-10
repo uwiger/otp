@@ -4,7 +4,7 @@
 <erlref>
   <header>
     <copyright>
-      <year>1996</year><year>2010</year>
+      <year>1996</year><year>2011</year>
       <holder>Ericsson AB. All Rights Reserved.</holder>
     </copyright>
     <legalnotice>
@@ -2356,6 +2356,14 @@ os_prompt%</pre>
               <seealso marker="tools:instrument">instrument(3)</seealso>
               and/or <seealso marker="erts:erl">erl(1)</seealso>.</p>
           </item>
+          <tag><c>low</c></tag>
+          <item>
+            <p>Only on 64-bit halfword emulator.</p>
+            <p>The total amount of memory allocated in low memory areas
+	      that are restricted to less than 4 Gb even though
+	      the system may have more physical memory.</p>
+	    <p>May be removed in future releases of halfword emulator.</p>
+          </item>
         </taglist>
         <note>
           <p>The <c>system</c> value is not complete. Some allocated
@@ -3980,7 +3988,8 @@ os_prompt%</pre>
           <tag><c>{status, Status}</c></tag>
           <item>
             <p><c>Status</c> is the status of the process. <c>Status</c>
-              is <c>waiting</c> (waiting for a message), <c>running</c>,
+              is <c>exiting</c>, <c>garbage_collecting</c>,
+              <c>waiting</c> (for a message), <c>running</c>,
               <c>runnable</c> (ready to run, but another process is
               running), or <c>suspended</c> (suspended on a "busy" port
               or by the <c>erlang:suspend_process/[1,2]</c> BIF).</p>
