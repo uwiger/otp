@@ -24,7 +24,7 @@
 -export([all/0, suite/0,groups/0,init_per_suite/1, end_per_suite/1,
 	 init_per_group/2,end_per_group/2]).
 
--export([start/1, start1/1, start2/1, start3/1, start4/1, start5/1, start6/1,
+-export([start1/1, start2/1, start3/1, start4/1, start5/1, start6/1,
 	 start7/1, start8/1, start9/1, start10/1, start11/1, start12/1]).
 
 -export([ abnormal1/1, abnormal2/1]).
