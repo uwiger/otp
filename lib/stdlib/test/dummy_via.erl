@@ -9,7 +9,9 @@
 reset() ->
     P = whereis(?MODULE),
     catch unlink(P),
+    Ref = erlang:monitor(process, P),
     catch exit(P, kill),
+    receive {'DOWN',Ref,_,_,_} -> ok end,
     Me = self(),
     Pid = spawn_link(fun() ->
 			     register(?MODULE, self()),
