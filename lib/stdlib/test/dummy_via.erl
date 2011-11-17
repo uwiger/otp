@@ -92,8 +92,3 @@ handle_request({unregister_name, Name}, Reg) ->
     {ok, lists:keydelete(Name, 1, Reg)};
 handle_request(_, Reg) ->
     {badarg, Reg}.
-
-
-
-	   
-	    

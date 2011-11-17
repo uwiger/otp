@@ -141,8 +141,8 @@ gen_event:stop             ----->  Module:terminate/2
 	If <c>EventMgrName={via,Module,ViaName}</c>, the event manager will
 	register with the registry represented by <c>Module</c>.
 	The <c>Module</c> callback should export the functions
-	<c>register_name/2</c>, <c>unregister_name/1</c>
-	and <c>send/2</c>, which should behave like the
+	<c>register_name/2</c>, <c>unregister_name/1</c>,
+	<c>whereis_name/1</c> and <c>send/2</c>, which should behave like the
 	corresponding functions in <c>global</c>. Thus,
 	<c>{via,global,GlobalName}</c> is a valid reference.</p>
         <p>If the event manager is successfully created the function
