@@ -279,7 +279,10 @@ cancel_timer(Ref) ->
 enter_loop(Mod, Options, StateName, StateData) ->
     enter_loop(Mod, Options, StateName, StateData, self(), infinity).
 
-enter_loop(Mod, Options, StateName, StateData, ServerName = {_,_}) ->
+enter_loop(Mod, Options, StateName, StateData, {Scope,_} = ServerName)
+  when Scope == local; Scope == global ->
+    enter_loop(Mod, Options, StateName, StateData, ServerName,infinity);
+enter_loop(Mod, Options, StateName, StateData, {via,_,_} = ServerName) ->
     enter_loop(Mod, Options, StateName, StateData, ServerName,infinity);
 enter_loop(Mod, Options, StateName, StateData, Timeout) ->
     enter_loop(Mod, Options, StateName, StateData, self(), Timeout).
@@ -389,6 +392,8 @@ unregister_name({local,Name}) ->
     _ = (catch unregister(Name));
 unregister_name({global,Name}) ->
     _ = global:unregister_name(Name);
+unregister_name({via, Mod, Name}) ->
+    _ = Mod:unregister_name(Name);
 unregister_name(Pid) when is_pid(Pid) ->
     Pid.
 

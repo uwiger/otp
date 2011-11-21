@@ -556,6 +556,8 @@ enter_loop(doc) ->
 enter_loop(Config) when is_list(Config) ->
     OldFlag = process_flag(trap_exit, true),
 
+    ?line dummy_via:reset(),
+
     %% Locally registered process + {local, Name}
     ?line {ok, Pid1a} =
 	proc_lib:start_link(?MODULE, enter_loop, [local, local]),
@@ -659,9 +661,21 @@ enter_loop(Config) when is_list(Config) ->
 	{'EXIT', Pid6b, process_not_registered_globally} ->
 	    ok
     after 1000 ->
-	    ?line test_server:fail(gen_server_started)
+	    ?line test_server:fail(gen_fsm_started)
     end,
     global:unregister_name(armitage),
+
+    dummy_via:register_name(armitage, self()),
+    ?line {ok, Pid6c} =
+	proc_lib:start_link(?MODULE, enter_loop, [anon, via]),
+    receive
+	{'EXIT', Pid6c, {process_not_registered_via, dummy_via}} ->
+	    ok
+    after 1000 ->
+	    ?line test_server:fail({gen_fsm_started, process_info(self(),
+								 messages)})
+    end,
+    dummy_via:unregister_name(armitage),
 
     process_flag(trap_exit, OldFlag),
     ok.
@@ -671,6 +685,7 @@ enter_loop(Reg1, Reg2) ->
     case Reg1 of
 	local -> register(armitage, self());
 	global -> global:register_name(armitage, self());
+	via -> dummy_via:register_name(armitage, self());
 	anon -> ignore
     end,
     proc_lib:init_ack({ok, self()}),
@@ -679,6 +694,9 @@ enter_loop(Reg1, Reg2) ->
 	    gen_fsm:enter_loop(?MODULE, [], state0, [], {local,armitage});
 	global ->
 	    gen_fsm:enter_loop(?MODULE, [], state0, [], {global,armitage});
+	via ->
+	    gen_fsm:enter_loop(?MODULE, [], state0, [],
+			       {via, dummy_via, armitage});
 	anon ->
 	    gen_fsm:enter_loop(?MODULE, [], state0, [])
     end.

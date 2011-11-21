@@ -269,7 +269,11 @@ multi_call(Nodes, Name, Req, Timeout)
 enter_loop(Mod, Options, State) ->
     enter_loop(Mod, Options, State, self(), infinity).
 
-enter_loop(Mod, Options, State, ServerName = {_, _}) ->
+enter_loop(Mod, Options, State, ServerName = {Scope, _})
+  when Scope == local; Scope == local ->
+    enter_loop(Mod, Options, State, ServerName, infinity);
+
+enter_loop(Mod, Options, State, ServerName = {via, _, _}) ->
     enter_loop(Mod, Options, State, ServerName, infinity);
 
 enter_loop(Mod, Options, State, Timeout) ->
