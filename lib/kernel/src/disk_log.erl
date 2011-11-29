@@ -64,7 +64,7 @@
 %%-define(PROFILE(C), C).
 -define(PROFILE(C), void).
 
--compile({inline,[{log_loop,5},{log_end_sync,2},{replies,2},{rflat,1}]}).
+-compile({inline,[{log_loop,5},{log_end_sync,2},{replies,2}]}).
 
 %%%----------------------------------------------------------------------
 %%% Contract type specifications
@@ -124,56 +124,56 @@ open(A) ->
       Log :: log(),
       Term :: term().
 log(Log, Term) -> 
-    req(Log, {log, term_to_binary(Term)}).
+    B = term_to_binary(Term),
+    req(Log, {log, {[B], byte_size(B)}}).
 
 -spec blog(Log, Bytes) -> ok | {error, Reason :: log_error_rsn()} when
       Log :: log(),
       Bytes :: bytes().
 blog(Log, Bytes) ->
-    req(Log, {blog, check_bytes(Bytes)}).
+    B = ensure_bin(Bytes),
+    req(Log, {blog, {[B], byte_size(B)}}).
 
 -spec log_terms(Log, TermList) -> ok | {error, Resaon :: log_error_rsn()} when
       Log :: log(),
       TermList :: [term()].
 log_terms(Log, Terms) ->
-    Bs = terms2bins(Terms),
-    req(Log, {log, Bs}).
+    req(Log, {log, terms2bins(Terms)}).
 
 -spec blog_terms(Log, BytesList) ->
                         ok | {error, Reason :: log_error_rsn()} when
       Log :: log(),
       BytesList :: [bytes()].
 blog_terms(Log, Bytess) ->
-    Bs = check_bytes_list(Bytess, Bytess),
-    req(Log, {blog, Bs}).
+    req(Log, {blog, ensure_bin_list(Bytess)}).
 
 -type notify_ret() :: 'ok' | {'error', 'no_such_log'}.
 
 -spec alog(Log, Term) -> notify_ret() when
       Log :: log(),
       Term :: term().
-alog(Log, Term) -> 
-    notify(Log, {alog, term_to_binary(Term)}).
+alog(Log, Term) ->
+    B = term_to_binary(Term),
+    notify(Log, {alog, {[B], byte_size(B)}}).
 
 -spec alog_terms(Log, TermList) -> notify_ret() when
       Log :: log(),
       TermList :: [term()].
 alog_terms(Log, Terms) ->
-    Bs = terms2bins(Terms),
-    notify(Log, {alog, Bs}).
+    notify(Log, {alog, terms2bins(Terms)}).
 
 -spec balog(Log, Bytes) -> notify_ret() when
       Log :: log(),
       Bytes :: bytes().
 balog(Log, Bytes) ->
-    notify(Log, {balog, check_bytes(Bytes)}).
+    B = ensure_bin(Bytes),
+    notify(Log, {balog, {[B], byte_size(B)}}).
 
 -spec balog_terms(Log, ByteList) -> notify_ret() when
       Log :: log(),
       ByteList :: [bytes()].
 balog_terms(Log, Bytess) ->
-    Bs = check_bytes_list(Bytess, Bytess),
-    notify(Log, {balog, Bs}).
+    notify(Log, {balog, ensure_bin_list(Bytess)}).
 
 -type close_error_rsn() ::'no_such_log' | 'nonode'
                          | {'file_error', file:filename(), file_error()}.
@@ -218,7 +218,7 @@ truncate(Log, Head) ->
       Log :: log(),
       BHead :: bytes().
 btruncate(Log, Head) ->
-    req(Log, {truncate, {ok, check_bytes(Head)}, btruncate, 2}).
+    req(Log, {truncate, {ok, ensure_bin(Head)}, btruncate, 2}).
 
 -type reopen_error_rsn() :: no_such_log
                           | nonode
@@ -247,7 +247,7 @@ reopen(Log, NewFile, NewHead) ->
       File :: file:filename(),
       BHead :: bytes().
 breopen(Log, NewFile, NewHead) ->
-    req(Log, {reopen, NewFile, {ok, check_bytes(NewHead)}, breopen, 3}).
+    req(Log, {reopen, NewFile, {ok, ensure_bin(NewHead)}, breopen, 3}).
 
 -type inc_wrap_error_rsn() :: 'no_such_log' | 'nonode'
                             | {'read_only_mode', log()}
@@ -683,12 +683,12 @@ handle({From, write_cache}, S) when From =:= self() ->
         Error ->
 	    loop(S#state{cache_error = Error})
     end;
-handle({From, {log, B}}, S) ->
+handle({From, {log, {B, BSz}}}=Message, S) ->
     case get(log) of
 	L when L#log.mode =:= read_only ->
 	    reply(From, {error, {read_only_mode, L#log.name}}, S);
 	L when L#log.status =:= ok, L#log.format =:= internal ->
-	    log_loop(S, From, [B], [], iolist_size(B));
+	    log_loop(S, From, B, [], BSz);
 	L when L#log.status =:= ok, L#log.format =:= external ->
 	    reply(From, {error, {format_external, L#log.name}}, S);
 	L when L#log.status =:= {blocked, false} ->
@@ -696,28 +696,28 @@ handle({From, {log, B}}, S) ->
 	L when L#log.blocked_by =:= From ->
 	    reply(From, {error, {blocked_log, L#log.name}}, S);
 	_ ->
-	    loop(S#state{queue = [{From, {log, B}} | S#state.queue]})
+	    loop(S#state{queue = [Message | S#state.queue]})
     end;    
-handle({From, {blog, B}}, S) ->
+handle({From, {blog, {B, BSz}}}=Message, S) ->
     case get(log) of
 	L when L#log.mode =:= read_only ->
 	    reply(From, {error, {read_only_mode, L#log.name}}, S);
 	L when L#log.status =:= ok ->
-	    log_loop(S, From, [B], [], iolist_size(B));
+	    log_loop(S, From, B, [], BSz);
 	L when L#log.status =:= {blocked, false} ->
 	    reply(From, {error, {blocked_log, L#log.name}}, S);
 	L when L#log.blocked_by =:= From ->
 	    reply(From, {error, {blocked_log, L#log.name}}, S);
 	_ ->
-	    loop(S#state{queue = [{From, {blog, B}} | S#state.queue]})
+	    loop(S#state{queue = [Message | S#state.queue]})
     end;
-handle({alog, B}, S) ->
+handle({alog, {B, BSz}}=Message, S) ->
     case get(log) of
 	L when L#log.mode =:= read_only ->
 	    notify_owners({read_only,B}),
 	    loop(S);
 	L when L#log.status =:= ok, L#log.format =:= internal ->
-	    log_loop(S, [], [B], [], iolist_size(B));
+	    log_loop(S, [], B, [], BSz);
 	L when L#log.status =:= ok ->
 	    notify_owners({format_external, B}),
 	    loop(S);
@@ -725,20 +725,20 @@ handle({alog, B}, S) ->
 	    notify_owners({blocked_log, B}),
 	    loop(S);
 	_ ->
-	    loop(S#state{queue = [{alog, B} | S#state.queue]})
+	    loop(S#state{queue = [Message | S#state.queue]})
     end;
-handle({balog, B}, S) ->
+handle({balog, {B, BSz}}=Message, S) ->
     case get(log) of
 	L when L#log.mode =:= read_only ->
 	    notify_owners({read_only,B}),
 	    loop(S);
 	L when L#log.status =:= ok ->
-	    log_loop(S, [], [B], [], iolist_size(B));
+	    log_loop(S, [], B, [], BSz);
 	L when L#log.status =:= {blocked, false} ->
 	    notify_owners({blocked_log, B}),
 	    loop(S);
 	_ ->
-	    loop(S#state{queue = [{balog, B} | S#state.queue]})
+	    loop(S#state{queue = [Message | S#state.queue]})
     end;
 handle({From, {block, QueueLogRecs}}, S) ->
     case get(log) of
@@ -1040,39 +1040,40 @@ sync_loop(From, S) ->
 log_loop(#state{cache_error = CE}=S, Pids, _Bins, _Sync, _Sz) when CE =/= ok ->
     loop(cache_error(S, Pids));
 log_loop(#state{}=S, Pids, Bins, Sync, Sz) when Sz > ?MAX_LOOK_AHEAD ->
-    loop(log_end(S, Pids, Bins, Sync));
+    loop(log_end(S, Pids, Bins, Sync, Sz));
 log_loop(#state{messages = []}=S, Pids, Bins, Sync, Sz) ->
     receive 
 	Message ->
-            log_loop(Message, Pids, Bins, Sync, Sz, S, get(log))
+	    log_loop(Message, Pids, Bins, Sync, Sz, S, get(log))
     after 0 ->
-	    loop(log_end(S, Pids, Bins, Sync))
+	    loop(log_end(S, Pids, Bins, Sync, Sz))
     end;
 log_loop(#state{messages = [M | Ms]}=S, Pids, Bins, Sync, Sz) ->
     S1 = S#state{messages = Ms},
     log_loop(M, Pids, Bins, Sync, Sz, S1, get(log)).
 
 %% Items logged after the last sync request found are sync:ed as well.
-log_loop({alog,B}, Pids, Bins, Sync, Sz, S, #log{format = internal}) ->
+log_loop({alog,{B,BSz}}, Pids, Bins, Sync, Sz, S, L) when L#log.format =:= internal ->
     %% {alog, _} allowed for the internal format only.
-    log_loop(S, Pids, [B | Bins], Sync, Sz+iolist_size(B));
-log_loop({balog, B}, Pids, Bins, Sync, Sz, S, _L) ->
-    log_loop(S, Pids, [B | Bins], Sync, Sz+iolist_size(B));
-log_loop({From, {log, B}}, Pids, Bins, Sync, Sz, S, #log{format = internal}) ->
+    log_loop(S, Pids, B ++ Bins, Sync, Sz + BSz);
+log_loop({balog, {B,BSz}}, Pids, Bins, Sync, Sz, S, _L) ->
+    log_loop(S, Pids, B ++ Bins, Sync, Sz + BSz);
+log_loop({From, {log, {B,BSz}}}, Pids, Bins, Sync, Sz, S, L)
+                                           when L#log.format =:= internal ->
     %% {log, _} allowed for the internal format only.
-    log_loop(S, [From | Pids], [B | Bins], Sync, Sz+iolist_size(B));
-log_loop({From, {blog, B}}, Pids, Bins, Sync, Sz, S, _L) ->
-    log_loop(S, [From | Pids], [B | Bins], Sync, Sz+iolist_size(B));
+    log_loop(S, [From | Pids], B ++ Bins, Sync, Sz + BSz);
+log_loop({From, {blog, {B,BSz}}}, Pids, Bins, Sync, Sz, S, _L) ->
+    log_loop(S, [From | Pids], B ++ Bins, Sync, Sz + BSz);
 log_loop({From, sync}, Pids, Bins, Sync, Sz, S, _L) ->
     log_loop(S, Pids, Bins, [From | Sync], Sz);
-log_loop(Message, Pids, Bins, Sync, _Sz, S, _L) ->
-    NS = log_end(S, Pids, Bins, Sync),
+log_loop(Message, Pids, Bins, Sync, Sz, S, _L) ->
+    NS = log_end(S, Pids, Bins, Sync, Sz),
     handle(Message, NS).
 
-log_end(S, [], [], Sync) ->
+log_end(S, [], [], Sync, _Sz) ->
     log_end_sync(S, Sync);
-log_end(S, Pids, Bins, Sync) ->
-    case do_log(get(log), rflat(Bins)) of
+log_end(S, Pids, Bins, Sync, Sz) ->
+    case do_log(get(log), lists:reverse(Bins), Sz) of
 	N when is_integer(N) ->
 	    replies(Pids, ok),
 	    S1 = (state_ok(S))#state{cnt = S#state.cnt+N},
@@ -1091,17 +1092,6 @@ log_end_sync(S, Sync) ->
     Res = do_sync(get(log)),
     replies(Sync, Res),
     state_err(S, Res).
-
-%% Inlined.
-rflat([B]=L) when is_binary(B) -> L;
-rflat([B]) -> B;
-rflat(B) -> rflat(B, []).
-
-rflat([B | Bs], L) when is_binary(B) ->
-    rflat(Bs, [B | L]);
-rflat([B | Bs], L) ->
-    rflat(Bs, B ++ L);
-rflat([], L) -> L.
 
 %% -> {ok, Log} | {error, Error}
 do_change_notify(L, Pid, Notify) ->
@@ -1316,32 +1306,35 @@ do_open(A) ->
     do_open2(L, A).
 
 mk_head({head, Term}, internal) -> {ok, term_to_binary(Term)};
-mk_head({head, Bytes}, external) -> {ok, check_bytes(Bytes)};
+mk_head({head, Bytes}, external) -> {ok, ensure_bin(Bytes)};
 mk_head(H, _) -> H.
 
-terms2bins([T | Ts]) ->
-    [term_to_binary(T) | terms2bins(Ts)];
-terms2bins([]) ->
-    [].
+%% returns reversed list of binaries and total size
+terms2bins(Ts) ->
+    terms2bins(Ts, [], 0).
 
-check_bytes_list([B | Bs], Bs0) when is_binary(B) ->
-    check_bytes_list(Bs, Bs0);
-check_bytes_list([], Bs0) ->
-    Bs0;
-check_bytes_list(_, Bs0) ->
-    check_bytes_list(Bs0).
+terms2bins([T | Ts], As, Sz) ->
+    B = term_to_binary(T),
+    terms2bins(Ts, [B | As], Sz + byte_size(B));
+terms2bins([], As, Sz) ->
+    {As, Sz}.
 
-check_bytes_list([B | Bs]) when is_binary(B) ->
-    [B | check_bytes_list(Bs)];
-check_bytes_list([B | Bs]) ->
-    [list_to_binary(B) | check_bytes_list(Bs)];
-check_bytes_list([]) ->
-    [].
+%% returns reversed list of binaries and total size
+ensure_bin_list(Bs) ->
+    ensure_bin_list(Bs, [], 0).
 
-check_bytes(Binary) when is_binary(Binary) ->     
+ensure_bin_list([B | Bs], As, Sz) when is_binary(B) ->
+    ensure_bin_list(Bs, [B | As], Sz + byte_size(B));
+ensure_bin_list([B0 | Bs], As, Sz) ->
+    B = iolist_to_binary(B0),
+    ensure_bin_list(Bs, [B | As], Sz + byte_size(B));
+ensure_bin_list([], As, Sz) ->
+    {As, Sz}.
+
+ensure_bin(Binary) when is_binary(Binary) ->
     Binary;
-check_bytes(Bytes) -> 
-    list_to_binary(Bytes).
+ensure_bin(Bytes) ->
+    iolist_to_binary(Bytes).
 
 %%-----------------------------------------------------------------
 %% Change size of the logs in runtime.
@@ -1378,7 +1371,7 @@ check_head({head_func, {M, F, A}}, _Format) when is_atom(M),
                                                  is_list(A) ->
     {ok, {M, F, A}};
 check_head({head, Head}, external) ->
-    case catch check_bytes(Head) of
+    case catch ensure_bin(Head) of
 	{'EXIT', _} ->
 	    {error, {badarg, head}};
 	_ ->
@@ -1693,12 +1686,15 @@ do_unblock(L, S) ->
     [] = S#state.messages, % assertion
     S#state{queue = [], messages = lists:reverse(S#state.queue)}.
 
--spec do_log(#log{}, [binary()]) -> integer() | {'error', _, integer()}.
+-spec do_log(#log{}, [binary()], integer()) -> integer() | {'error', _, integer()}.
 
-do_log(L, B) when L#log.type =:= halt ->
+do_log(L, B) ->
+    do_log(L, B, erlang:iolist_size(B)).
+
+do_log(L, B, BSz) when L#log.type =:= halt ->
     #log{format = Format, extra = Halt} = L,
     #halt{curB = CurSize, size = Sz} = Halt,
-    {Bs, BSize} = bsize(B, Format),
+    {Bs, BSize} = bsize(B, Format, BSz),
     case get(is_full) of
 	true ->
             {error, {error, {full, L#log.name}}, 0};
@@ -1707,7 +1703,7 @@ do_log(L, B) when L#log.type =:= halt ->
 	undefined ->
 	    halt_write_full(L, B, Format, 0)
     end;
-do_log(L, B) when L#log.format_type =:= wrap_int ->
+do_log(L, B, _BSz) when L#log.format_type =:= wrap_int ->
     case disk_log_1:mf_int_log(L#log.extra, B, L#log.head) of
 	{ok, Handle, Logged, Lost, Wraps} ->
 	    notify_owners_wrap(Wraps),
@@ -1720,7 +1716,7 @@ do_log(L, B) when L#log.format_type =:= wrap_int ->
 	    put(log, L#log{extra = Handle}),
 	    {error, Error, Logged - Lost}
     end;
-do_log(L, B) when L#log.format_type =:= wrap_ext ->
+do_log(L, B, _BSz) when L#log.format_type =:= wrap_ext ->
     case disk_log_1:mf_ext_log(L#log.extra, B, L#log.head) of
 	{ok, Handle, Logged, Lost, Wraps} ->
 	    notify_owners_wrap(Wraps),
@@ -1734,17 +1730,14 @@ do_log(L, B) when L#log.format_type =:= wrap_ext ->
 	    {error, Error, Logged - Lost}
     end.
 
-bsize(B, external) ->
-    {B, xsz(B, 0)};
-bsize(B, internal) ->
+bsize(B, external, BSz) ->
+    {B, BSz};
+bsize(B, internal, _BSz) ->
     disk_log_1:logl(B).
 
-xsz([B|T], Sz) -> xsz(T, byte_size(B) + Sz);
-xsz([], Sz) -> Sz.
-	
 halt_write_full(L, [Bin | Bins], Format, N) ->
     B = [Bin],
-    {Bs, BSize} = bsize(B, Format),
+    {Bs, BSize} = bsize(B, Format, byte_size(Bin)),
     Halt = L#log.extra,
     #halt{curB = CurSize, size = Sz} = Halt,
     if 
