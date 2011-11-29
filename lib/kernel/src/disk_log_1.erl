@@ -1402,19 +1402,24 @@ open_truncate(FileName) ->
 
 %%% Functions that access files, and throw on error. 
 
--define(MAX, 16384). % bytes
+-define(MAX, 524288). % bytes
 -define(TIMEOUT, 2000). % ms
 
 %% -> {Reply, cache()}; Reply = ok | Error
-fwrite(#cache{c = []} = FdC, _FN, B, Size) ->
-    case get(write_cache_timer_is_running) of
-        true -> 
-            ok;
-        _ -> 
-            put(write_cache_timer_is_running, true),
-            erlang:send_after(?TIMEOUT, self(), {self(), write_cache})
-    end,
-    {ok, FdC#cache{sz = Size, c = B}};
+fwrite(#cache{fd = Fd, c = []} = FdC, FileName, B, Size) ->
+    if Size < ?MAX ->
+            case get(write_cache_timer_is_running) of
+                true ->
+                    ok;
+                _ ->
+                    put(write_cache_timer_is_running, true),
+                    erlang:send_after(?TIMEOUT, self(), {self(), write_cache})
+            end,
+            {ok, FdC#cache{sz = Size, c = B}};
+       true ->
+            %% don't bother to cache if next fwrite would flush anyway
+            write_cache(Fd, FileName, B)
+    end;
 fwrite(#cache{sz = Sz, c = C} = FdC, _FN, B, Size) when Sz < ?MAX ->
     {ok, FdC#cache{sz = Sz+Size, c = [C | B]}};
 fwrite(#cache{fd = Fd, c = C}, FileName, B, _Size) ->
