@@ -1315,7 +1315,9 @@ terms2bins(Ts) ->
 
 terms2bins([T | Ts], As, Sz) ->
     B = term_to_binary(T),
-    terms2bins(Ts, [B | As], Sz + byte_size(B));
+    BSz = byte_size(B),
+    erlang:bump_reductions(BSz div 1000 + 1), %% At least one.
+    terms2bins(Ts, [B | As], Sz + BSz);
 terms2bins([], As, Sz) ->
     {As, Sz}.
 
