@@ -39,7 +39,7 @@
 -define(ets_delete_table(Tab), ets:delete(Tab)).
 -define(ets_fixtable(Tab, Bool), ets:fixtable(Tab, Bool)).
 
--define(catch_val(Var), (catch ?ets_lookup_element(mnesia_gvar, Var, 2))).
+-define(catch_val(Var), (try ?ets_lookup_element(mnesia_gvar, Var, 2) catch error:_ -> {'EXIT',badarg} end)).
 
 %% It's important that counter is first, since we compare tid's
 
@@ -60,6 +60,7 @@
 		  ram_copies = [],                 % [Node]
 		  disc_copies = [],                % [Node]
 		  disc_only_copies = [],           % [Node]
+                  external_copies = [],            % [{{Alias,Mod},[Node]}]
 		  load_order = 0,                  % Integer
 		  access_mode = read_write,        % read_write | read_only
 		  majority = false,                % true | false
@@ -95,6 +96,7 @@
 		 ram_copies = [],
 		 disc_copies = [],
 		 disc_only_copies = [],
+                 external_copies = [],
 		 snmp = [],
 		 schema_ops = []
 		}).

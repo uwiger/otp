@@ -31,6 +31,7 @@
 	 init/0,
 	 mktab/2,
 	 unsafe_mktab/2,
+         unsafe_create_external/4,
 	 mnesia_down/2,
 	 needs_protocol_conversion/1,
 	 negotiate_protocol/1,
@@ -124,6 +125,8 @@ close_log(Name) ->
 unsafe_close_log(Name) ->
     unsafe_call({unsafe_close_log, Name}).
 
+unsafe_create_external(Tab, Alias, Mod, Cs) ->
+    unsafe_call({unsafe_create_external, Tab, Alias, Mod, Cs}).
 
 disconnect(Node) ->
     cast({disconnect, Node}).
@@ -398,7 +401,15 @@ handle_call({unsafe_close_log, Name}, _From, State) ->
     disk_log:close(Name),
     {reply, ok, State};
 
-handle_call({negotiate_protocol, Mon, _Version, _Protocols}, _From, State)
+handle_call({unsafe_create_external, Tab, Alias, Mod, Cs}, _From, State) ->
+    case catch Mod:create_table(Alias, Tab, mnesia_schema:cs2list(Cs)) of
+	{'EXIT', ExitReason} ->
+	    {reply, {error, ExitReason}, State};
+	Reply ->
+	    {reply, Reply, State}
+    end;
+
+handle_call({negotiate_protocol, Mon, _Version, _Protocols}, _From, State) 
   when State#state.tm_started == false ->
     State2 =  State#state{early_connects = [node(Mon) | State#state.early_connects]},
     {reply, {node(), {reject, self(), uninitialized, uninitialized}}, State2};
@@ -665,6 +676,7 @@ get_env(E) ->
 env() ->
     [
      access_module,
+     allow_index_on_key,
      auto_repair,
      backup_module,
      debug,
@@ -686,14 +698,18 @@ env() ->
      no_table_loaders,
      dc_dump_limit,
      send_compressed,
-     report_conflicting_locks
+     report_conflicting_locks,
+     filesystem_locations,
+     schema
     ].
 
 default_env(access_module) ->
     mnesia;
 default_env(auto_repair) ->
     true;
-default_env(backup_module) ->
+default_env(allow_index_on_key) ->
+    false;
+default_env(backup_module) -> 
     mnesia_backup;
 default_env(debug) ->
     none;
@@ -734,6 +750,10 @@ default_env(dc_dump_limit) ->
     4;
 default_env(send_compressed) ->
     0;
+default_env(filesystem_locations) ->
+    [];
+default_env(schema) ->
+    [];
 default_env(report_conflicting_locks) ->
     false.
 
@@ -746,6 +766,7 @@ check_type(Env, Val) ->
     end.
 
 do_check_type(access_module, A) when is_atom(A) -> A;
+do_check_type(allow_index_on_key, B) -> bool(B);
 do_check_type(auto_repair, B) -> bool(B);
 do_check_type(backup_module, B) when is_atom(B) -> B;
 do_check_type(debug, debug) -> debug;
@@ -784,7 +805,9 @@ do_check_type(pid_sort_order, _) -> false;
 do_check_type(no_table_loaders, N) when is_integer(N), N > 0 -> N;
 do_check_type(dc_dump_limit,N) when is_number(N), N > 0 -> N;
 do_check_type(send_compressed, L) when is_integer(L), L >= 0, L =< 9 -> L;
-do_check_type(report_conflicting_locks, L) when is_boolean(L) -> L.
+do_check_type(report_conflicting_locks, L) when is_boolean(L) -> L;
+do_check_type(filesystem_locations, L) when is_list(L) -> L;
+do_check_type(schema, L) when is_list(L) -> L.
 
 bool(true) -> true;
 bool(false) -> false.

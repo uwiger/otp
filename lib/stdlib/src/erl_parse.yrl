@@ -519,7 +519,7 @@ Erlang code.
 -compile([{hipe,[{regalloc,linear_scan}]}]).
 
 -export_type([abstract_clause/0, abstract_expr/0, abstract_form/0,
-              error_info/0]).
+              error_info/0, token/0]).
 
 -type abstract_clause() :: term().
 -type abstract_expr() :: term().
@@ -527,6 +527,8 @@ Erlang code.
 -type error_description() :: term().
 -type error_info() :: {erl_scan:line(), module(), error_description()}.
 -type tokens() :: erl_scan:tokens().
+-type token() :: {Tag :: atom(), Line :: erl_scan:line()}.
+
 
 %% mkop(Op, Arg) -> {op,Line,Op,Arg}.
 %% mkop(Left, Op, Right) -> {op,Line,Op,Left,Right}.

@@ -1688,10 +1688,10 @@ do_unblock(L, S) ->
     [] = S#state.messages, % assertion
     S#state{queue = [], messages = lists:reverse(S#state.queue)}.
 
--spec do_log(#log{}, [binary()], integer()) -> integer() | {'error', _, integer()}.
-
 do_log(L, B) ->
     do_log(L, B, erlang:iolist_size(B)).
+
+-spec do_log(#log{}, [binary()], integer()) -> integer() | {'error', _, integer()}.
 
 do_log(L, B, BSz) when L#log.type =:= halt ->
     #log{format = Format, extra = Halt} = L,

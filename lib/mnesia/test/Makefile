@@ -50,7 +50,9 @@ MODULES= \
 	mnesia_schema_recovery_test \
 	mnesia_measure_test \
 	mnesia_cost \
-	mnesia_dbn_meters 
+	mnesia_dbn_meters \
+	mnesia_ext_test \
+	mnesia_ext_eleveldb_test_helper
 
 DocExamplesDir := ../doc/src/
 
