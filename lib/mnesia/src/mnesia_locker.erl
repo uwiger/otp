@@ -1189,8 +1189,8 @@ system_code_change(State, _Module, _OldVsn, _Extra) ->
 %% AXD301 patch sort pids according to R9B sort order
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%% Om R9B == true, the comparison is done as in R9B plain.
-%% Om R9B == false, the comparison is done as in any other release.
+%% If R9B == true, the comparison is done as in R9B plain.
+%% If R9B == false, the comparison is done as in any other release.
 %% cmp_tid(T1, T2) returns -1 if T1 < T2, 0 if T1 = T2 and 1 if T1 > T2.
 
 -define(VERSION_MAGIC,       131).
