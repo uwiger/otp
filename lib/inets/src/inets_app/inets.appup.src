@@ -18,6 +18,16 @@
 
 {"%VSN%",
  [
+  {"5.9.2.1", 
+   [
+    {restart_application, inets}
+   ]
+  },
+  {"5.9.2", 
+   [
+    {load_module, httpd_manager, soft_purge, soft_purge, []}
+   ]
+  },
   {"5.9.1", 
    [
     {load_module, httpd_request_handler, soft_purge, soft_purge, []}
@@ -71,6 +81,16 @@
   }
  ],
  [
+  {"5.9.2.1", 
+   [
+    {restart_application, inets}
+   ]
+  },
+  {"5.9.2", 
+   [
+    {load_module, httpd_manager, soft_purge, soft_purge, []}
+   ]
+  },
   {"5.9.1", 
    [
     {load_module, httpd_request_handler, soft_purge, soft_purge, []}

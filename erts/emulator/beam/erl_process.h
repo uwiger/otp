@@ -371,6 +371,10 @@ struct ErtsRunQueue_ {
     } ports;
 };
 
+#ifdef ERTS_SMP
+extern long erts_runq_supervision_interval;
+#endif
+
 typedef union {
     ErtsRunQueue runq;
     char align[ERTS_ALC_CACHE_LINE_ALIGN_SIZE(sizeof(ErtsRunQueue))];
@@ -894,6 +898,7 @@ extern erts_smp_rwmtx_t erts_cpu_bind_rwmtx;
 */
 extern Eterm erts_system_monitor;
 extern Uint erts_system_monitor_long_gc;
+extern Uint erts_system_monitor_long_schedule;
 extern Uint erts_system_monitor_large_heap;
 struct erts_system_monitor_flags_t {
 	 unsigned int busy_port : 1;
