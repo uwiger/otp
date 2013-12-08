@@ -34,6 +34,7 @@
 -include("../include/erl_bits.hrl").
 
 -record(expand, {module=[],                     %Module name
+                 parameters=undefined,          %Module parameters (obsolete)
                  exports=[],                    %Exports
                  imports=[],                    %Imports
                  compile=[],                    %Compile flags
@@ -73,20 +74,62 @@ module(Fs0, Opts0) ->
                  },
     %% Expand the functions.
     {Tfs,St1} = forms(Fs, define_functions(Fs, St0)),
+    {Efs,St2} = expand_pmod(Tfs, St1),
     %% Get the correct list of exported functions.
-    Exports = case member(export_all, St1#expand.compile) of
-                  true -> gb_sets:to_list(St1#expand.defined);
-                  false -> St1#expand.exports
+    Exports = case member(export_all, St2#expand.compile) of
+                  true -> gb_sets:to_list(St2#expand.defined);
+                  false -> St2#expand.exports
               end,
     %% Generate all functions from stored info.
-    {Ats,St3} = module_attrs(St1#expand{exports = Exports}),
+    {Ats,St3} = module_attrs(St2#expand{exports = Exports}),
     {Mfs,St4} = module_predef_funcs(St3),
-    {St4#expand.module, St4#expand.exports, Ats ++ Tfs ++ Mfs,
+    {St4#expand.module, St4#expand.exports, Ats ++ Efs ++ Mfs,
      St4#expand.compile}.
 
 compiler_options(Forms) ->
     lists:flatten([C || {attribute,_,compile,C} <- Forms]).
     
+expand_pmod(Fs0, St0) ->
+    case St0#expand.parameters of
+        undefined ->
+            {Fs0,St0};
+        Ps0 ->
+	    {Fs1,St1} = add_instance(Ps0, Fs0, St0),
+	    ensure_new(Ps0, Fs1, St1)
+    end.
+
+ensure_new(Ps, Fs, St) ->
+    case has_new(Fs) of
+	true ->
+	    {Fs, St};
+	false ->
+	    add_new(Ps, Fs, St)
+    end.
+
+has_new([{function,_L,new,_A,_Cs} | _Fs]) ->
+    true;
+has_new([_ | Fs]) ->
+    has_new(Fs);
+has_new([]) ->
+    false.
+
+add_new(Ps, Fs, St) ->
+    Vs = [{var,0,V} || V <- Ps],
+    Body = [{call,0,{atom,0,instance},Vs}],
+    add_func(new, Vs, Body, Fs, St).
+
+add_instance(Ps, Fs, St) ->
+    Vs = [{var,0,V} || V <- Ps],
+    AbsMod = [{tuple,0,[{atom,0,St#expand.module}|Vs]}],
+    add_func(instance, Vs, AbsMod, Fs, St).
+
+add_func(Name, Args, Body, Fs, St) ->
+    A = length(Args),
+    F = {function,0,Name,A,[{clause,0,Args,[],Body}]},
+    NA = {Name,A},
+    {[F|Fs],St#expand{exports=ordsets:add_element(NA, St#expand.exports),
+		      defined=gb_sets:add_element(NA, St#expand.defined)}}.
+
 %% define_function(Form, State) -> State.
 %%  Add function to defined if form is a function.
 
@@ -166,6 +209,9 @@ forms([], St) -> {[],St}.
 %% attribute(Attribute, Value, Line, State) -> State'.
 %%  Process an attribute, this just affects the state.
 
+attribute(module, {Module, As}, _L, St) ->
+    %% handle module parameters in old abstract code
+    attribute(module, Module, _L, St#expand{parameters=As});
 attribute(module, Module, _L, St) ->
     true = is_atom(Module),
     St#expand{module=Module};
@@ -231,6 +277,8 @@ pattern({tuple,Line,Ps}, St0) ->
 %%pattern({struct,Line,Tag,Ps}, St0) ->
 %%    {TPs,TPsvs,St1} = pattern_list(Ps, St0),
 %%    {{tuple,Line,[{atom,Line,Tag}|TPs]},TPsvs,St1};
+pattern({record_field,_,{atom,_,''},{atom,_,_}=A}, St) ->
+    pattern(A, St);  % must be an old package-qualified name
 pattern({bin,Line,Es0}, St0) ->
     {Es1,St1} = pattern_bin(Es0, St0),
     {{bin,Line,Es1},St1};
@@ -321,6 +369,8 @@ expr({tuple,Line,Es0}, St0) ->
 %%expr({struct,Line,Tag,Es0}, Vs, St0) ->
 %%    {Es1,Esvs,Esus,St1} = expr_list(Es0, Vs, St0),
 %%    {{tuple,Line,[{atom,Line,Tag}|Es1]},Esvs,Esus,St1};
+expr({record_field,_,{atom,_,''},{atom,_,_}=A}, St) ->
+    expr(A, St);  % must be an old package-qualified name
 expr({bin,Line,Es0}, St0) ->
     {Es1,St1} = expr_bin(Es0, St0),
     {{bin,Line,Es1},St1};
