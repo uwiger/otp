@@ -1061,7 +1061,6 @@ change_disc_to_ram(Tab, Cs, FromS, ToS, Logtmp, InitBy) ->
 	startup ->
 	    ignore;
 	_ ->
-	    Type = val({Tab, setorbag}),
 	    %% ram table will already have been created
 	    Tab = ets:info(Tab, name),  %% assertion
 	    load_from_logfile(ToS, Tab, Logtmp),
