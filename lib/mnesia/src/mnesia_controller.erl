@@ -680,10 +680,8 @@ handle_call({update,Fun}, From, State) ->
 
 handle_call(get_cstructs, From, State) ->
     Tabs = val({schema, tables}),
-    %% Cstructs = [val({T, cstruct}) || T <- Tabs, T /= schema],
     Cstructs = [val({T, cstruct}) || T <- Tabs],
     Running = val({current, db_nodes}),
-    %% reply(From, {cstructs, [val({schema,cstruct})|Cstructs], Running}), 
     reply(From, {cstructs, Cstructs, Running}),
     noreply(State);
 
