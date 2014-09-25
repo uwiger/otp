@@ -540,10 +540,6 @@ insert_op(Tid, _, {op, rec, Storage, Item}, InPlace, InitBy) ->
     {{Tab, Key}, ValList, Op} = Item,
     insert(Tid, Storage, Tab, Key, ValList, Op, InPlace, InitBy);
 
-%% insert_op(_, _, {op, change_table_copy_type, _, FromS, ToS, _}, _, _) 
-%%   when element(1, FromS) == ext;
-%%        element(1, ToS) == ext ->
-%%     ignore;
 insert_op(Tid, _, {op, change_table_copy_type, N, FromS, ToS, TabDef}, InPlace, InitBy) ->
     Cs = mnesia_schema:list2cs(TabDef),
     Val = mnesia_schema:insert_cstruct(Tid, Cs, true), % Update ram only
