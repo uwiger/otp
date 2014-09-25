@@ -1108,7 +1108,6 @@ open_files(Tab, Semantics, Storage, UpdateInPlace, InitBy)
 		       Storage == disc_only_copies; Tab == schema ->
 			    Props = val({Tab, storage_properties}),
 			    DetsProps = proplists:get_value(dets, Props, []),
-			    
 			    Fname = prepare_open(Tab, UpdateInPlace),
 			    Args = [{file, Fname},
 				    {keypos, 2},
