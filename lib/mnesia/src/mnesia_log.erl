@@ -979,11 +979,6 @@ insert_dcdchunk({Cont, Recs}, Log, Storage, Tab) ->
 insert_dcdchunk(eof, _Log, _Storage, _Tab) ->
     ok.
 
-ets_insert(ram_copies, Tab, Recs) ->
-    ets:insert(Tab, Recs);
-ets_insert({ext, _, _} = Ext, Tab, Recs) ->
-    [mnesia_lib:db_put(Ext, Tab, R) || R <- Recs].
-
 load_dcl(Tab, Rep) ->
     FName = mnesia_lib:tab2dcl(Tab),
     case mnesia_lib:exists(FName) of
