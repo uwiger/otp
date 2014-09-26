@@ -3272,7 +3272,7 @@ has_known_suffix(_File, [], Bool) ->
 known_suffixes() -> known_suffixes(get_ext_types_disc()).
 
 known_suffixes(Ext) -> real_suffixes(Ext) ++ tmp_suffixes(Ext).
-     
+
 real_suffixes() -> real_suffixes(get_ext_types_disc()).
 
 real_suffixes(Ext) ->  [".DAT", ".LOG", ".BUP", ".DCL", ".DCD"] ++ ext_real_suffixes(Ext).
