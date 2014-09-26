@@ -284,7 +284,6 @@ read_nodes() ->
 	    case read_schema(false) of
 		{ok, _Source, CreateList} ->
 		    Cs = list2cs(CreateList),
-                    %% TODO: why no disc_only_copies and external_copies ??
 		    {ok, Cs#cstruct.disc_copies ++ Cs#cstruct.ram_copies};
 		{error, Reason} ->
 		    {error, Reason}
