@@ -194,7 +194,6 @@ set_schema(Tab) ->
     do_set_schema(Tab),
     [Tab | set_schema(?ets_next(schema, Tab))].
 
-
 get_create_list(Tab) ->
     ?ets_lookup_element(schema, Tab, 3).
 
