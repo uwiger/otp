@@ -302,7 +302,7 @@ start_remote_sender(Node,Tab,Storage) ->
 	    {SenderPid, Sz, Data};
 	{SenderPid, {first, TabSize}} =_M1 ->
 	    {SenderPid, TabSize, false};
-	{SenderPid, {first, TabSize, DetsData}} = _M2 ->
+	{SenderPid, {first, TabSize, DetsData}} ->
 	    {SenderPid, TabSize, DetsData};
 	%% Protocol conversion hack
 	{copier_done, Node} ->
