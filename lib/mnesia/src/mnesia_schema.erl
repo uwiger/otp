@@ -1972,8 +1972,6 @@ make_move_table(Tab, FromNode, ToNode) ->
     Storage = mnesia_lib:schema_cs_to_storage_type(FromNode, Cs),
     verify(true, lists:member(ToNode, Running), {not_active, schema, ToNode}),
 
-    %% verify_cstruct(new_cs(new_cs(Cs, ToNode, Storage, add),
-    %% 			  FromNode, Storage, del)),
     Cs2 = new_cs(Cs, ToNode, Storage, add),
     Cs3 = verify_cstruct(new_cs(Cs2, FromNode, Storage, del)),
     %% UW: is the following use of Cs2 and Cs3 deliberate?
