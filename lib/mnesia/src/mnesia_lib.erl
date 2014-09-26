@@ -1325,8 +1325,6 @@ db_update_counter(disc_only_copies, Tab, C, Val) ->
 db_update_counter({ext, Alias, Mod}, Tab, C, Val) ->
     Mod:update_counter(Alias, Tab, C, Val).
 
-%% TODO: no one uses this function. Is it dead code ??
-%% TODO: and what do it do ? Delete ETS if there is any ?
 db_erase_tab(Tab) ->
     db_erase_tab(val({Tab, storage_type}), Tab).
 db_erase_tab(ram_copies, Tab) -> ?ets_delete_table(Tab);
