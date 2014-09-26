@@ -984,9 +984,6 @@ get_schema_user_property(Key) ->
 	    Types
     end.
 
-get_ext_modules() ->
-    lists:usort([ Module || {_,Module} <- get_ext_types() ]).
-
 get_ext_types_disc() ->
     try get_ext_types_disc_()
     catch
