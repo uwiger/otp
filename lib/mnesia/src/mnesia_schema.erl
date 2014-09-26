@@ -58,7 +58,6 @@
          del_table_copy/2,
          del_table_index/2,
          delete_cstruct/2,
-         delete_recursive/1, %% TODO: not needed to export
          delete_schema/1,
          delete_schema2/0,
          delete_table/1,
@@ -66,10 +65,6 @@
          dump_tables/1,
          ensure_no_schema/1,
 	 get_create_list/1,
-         get_ext_types/0, %% TODO: not needed to export
-         get_ext_modules/0, %% TODO: not needed to export
-         get_ext_types_disc/0, %% TODO: not needed to export
-         get_ext_modules_disc/0, %% TODO: not needed to export
          get_initial_schema/3,
 	 get_table_properties/1,
          info/0,
@@ -93,7 +88,6 @@
 %         ram_delete_table/3,
 	 read_cstructs_from_disc/0,
          read_nodes/0,
-         real_suffixes/0, %% TODO: not needed to export
          remote_read_schema/0,
 	 restore/1,
          restore/2,
@@ -101,7 +95,6 @@
 	 schema_coordinator/3,
 	 set_where_to_read/3,
          transform_table/4,
-         tmp_suffixes/0, %% TODO: not needed to export
          undo_prepare_commit/2,
          unlock_schema/0,
          version/0,
