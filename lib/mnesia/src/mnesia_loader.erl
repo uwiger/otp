@@ -311,8 +311,6 @@ start_remote_sender(Node,Tab,Storage) ->
     end.
 
 table_init_fun(SenderPid, Storage) ->
-    PConv = mnesia_monitor:needs_protocol_conversion(node(SenderPid)),
-    MeMyselfAndI = self(),
     fun(read) ->
 	    Receiver = self(),
 	    SenderPid ! {Receiver, more},
