@@ -50,7 +50,6 @@ MODULES= \
 	mnesia_controller \
 	mnesia_dumper\
 	mnesia_event \
-	mnesia_ext_filesystem \
 	mnesia_ext_sup \
 	mnesia_frag \
 	mnesia_frag_hash \
