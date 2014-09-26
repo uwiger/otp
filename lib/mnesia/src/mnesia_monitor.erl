@@ -409,7 +409,7 @@ handle_call({unsafe_create_external, Tab, Alias, Mod, Cs}, _From, State) ->
 	    {reply, Reply, State}
     end;
 
-handle_call({negotiate_protocol, Mon, _Version, _Protocols}, _From, State) 
+handle_call({negotiate_protocol, Mon, _Version, _Protocols}, _From, State)
   when State#state.tm_started == false ->
     State2 =  State#state{early_connects = [node(Mon) | State#state.early_connects]},
     {reply, {node(), {reject, self(), uninitialized, uninitialized}}, State2};
@@ -709,7 +709,7 @@ default_env(auto_repair) ->
     true;
 default_env(allow_index_on_key) ->
     false;
-default_env(backup_module) -> 
+default_env(backup_module) ->
     mnesia_backup;
 default_env(debug) ->
     none;
