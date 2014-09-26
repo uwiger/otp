@@ -1572,10 +1572,7 @@ do_add_index_plugin(Name, Module, Function) ->
 		      end
 	      end,
     do_write_table_property(schema, {mnesia_index_plugins,
-				     [{Name, Module, Function}|Plugins]});
-do_add_index_plugin(Name, M, F) ->
-    mnesia:abort({bad_type, {index_plugin,Name,M,F}}).
-
+				     [{Name, Module, Function}|Plugins]}).
 
 delete_index_plugin(P) ->
     schema_transaction(
