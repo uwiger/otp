@@ -320,7 +320,7 @@ table_init_fun(SenderPid, Storage) ->
     end.
 
 %% Add_table_copy get's it's own locks.
-start_receiver(Tab,Storage,Cs,SenderPid,TabSize,DetsData,{dumper,add_table_copy}) ->    
+start_receiver(Tab,Storage,Cs,SenderPid,TabSize,DetsData,{dumper,add_table_copy}) ->
     Init = table_init_fun(SenderPid, Storage),
     case do_init_table(Tab,Storage,Cs,SenderPid,TabSize,DetsData,self(), Init) of
 	Err = {error, _} ->
@@ -437,11 +437,11 @@ make_table_fun(Pid, TabRec, Storage) ->
 	    Pid ! {TabRec, Msg},
 	    get_data(Pid, TabRec, Storage);
        (read) ->
-	    get_data(Pid, TabRec, Storage)	   
+	    get_data(Pid, TabRec, Storage)
     end.
 
 get_data(Pid, TabRec, Storage) ->
-    receive 
+    receive
 	{Pid, {more_z, CompressedRecs}} when is_binary(CompressedRecs) ->
 	    maybe_reply(Pid, {TabRec, more}, Storage),
 	    {zlib_uncompress(CompressedRecs),
