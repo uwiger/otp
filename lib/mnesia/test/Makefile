@@ -51,8 +51,7 @@ MODULES= \
 	mnesia_measure_test \
 	mnesia_cost \
 	mnesia_dbn_meters \
-	mnesia_ext_test \
-	mnesia_ext_eleveldb_test_helper
+	mnesia_ext_test
 
 DocExamplesDir := ../doc/src/
 
