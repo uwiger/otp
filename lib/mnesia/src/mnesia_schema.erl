@@ -1803,7 +1803,7 @@ make_add_table_copy(Tab, Node, Storage) ->
     Ns = mnesia_lib:cs_to_nodes(Cs),
     verify(false, lists:member(Node, Ns), {already_exists, Tab, Node}),
     Cs2 = verify_cstruct(new_cs(Cs, Node, Storage, add)),
-    
+
     %% Check storage and if node is running
     IsRunning = lists:member(Node, val({current, db_nodes})),
     if
