@@ -2658,8 +2658,8 @@ prepare_op(_Tid, {op, change_table_copy_type,  N, FromS, ToS, TabDef}, _WaitFor)
        true ->
 	    ok
     end,
-    
-    if 
+
+    if
 	NotActive == true ->
 	    mnesia:abort({not_active, Tab, node()});
 
@@ -2725,7 +2725,7 @@ prepare_op(_Tid, {op, change_table_copy_type,  N, FromS, ToS, TabDef}, _WaitFor)
             mnesia_dumper:dump_to_logfile(FromS, Tab),
             mnesia_checkpoint:tm_change_table_copy_type(Tab, FromS, ToS);
 
-	FromS == ram_copies ->	    
+	FromS == ram_copies ->
 	    case mnesia_monitor:use_dir() of
 		true ->
 		    Dat = mnesia_lib:tab2dcd(Tab),
@@ -2734,8 +2734,8 @@ prepare_op(_Tid, {op, change_table_copy_type,  N, FromS, ToS, TabDef}, _WaitFor)
 			    mnesia:abort({combine_error, Tab, node(),
 					  "Table dump exists"});
 			false ->
-			    case ToS of 
-				disc_copies -> 
+			    case ToS of
+				disc_copies ->
 				    mnesia_log:ets2dcd(FromS, Tab, dmp);
 				disc_only_copies ->
 				    mnesia_dumper:raw_named_dump_table(Tab, dmp)
