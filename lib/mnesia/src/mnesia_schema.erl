@@ -2367,7 +2367,6 @@ dirty_read_table_property(Tab, Key) ->
     end.
 
 
-
 %% perhaps a misnomer. How could also be delete_property... never mind.
 %% Returns the modified L.
 insert_prop(Prop, L, How) ->
