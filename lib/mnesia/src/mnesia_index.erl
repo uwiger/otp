@@ -528,7 +528,6 @@ del_index_info(Tab, Pos) ->
 	false ->
 	    %% Something is wrong ignore
 	    skip;
-
 	{value, Old} ->
 	    case lists:filter(fun({P,_}) ->
                                       element(1,P)=/=Pos
