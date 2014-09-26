@@ -1974,7 +1974,6 @@ make_move_table(Tab, FromNode, ToNode) ->
 
     Cs2 = new_cs(Cs, ToNode, Storage, add),
     Cs3 = verify_cstruct(new_cs(Cs2, FromNode, Storage, del)),
-    %% UW: is the following use of Cs2 and Cs3 deliberate?
     [{op, add_table_copy, Storage, ToNode, vsn_cs2list(Cs2)},
      {op, sync_trans},
      {op, del_table_copy, Storage, FromNode, vsn_cs2list(Cs3)}].
