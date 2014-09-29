@@ -346,7 +346,7 @@ disc_insert(_Tid, Storage, Tab, Key, Val, Op, InPlace, InitBy) ->
     Semantics = storage_semantics(Storage),
     case open_files(Tab, Semantics, Storage, InPlace, InitBy) of
 	true ->
-	    case Semantics of 
+	    case Semantics of
 		disc_copies when Tab /= schema ->
 		    mnesia_log:append({?MODULE,Tab}, {{Tab, Key}, Val, Op}),
 		    ok;
@@ -398,7 +398,7 @@ dets_insert(Op,Tab,Key,Val, Storage0) ->
 	    ok = mnesia_lib:db_match_erase(Storage, Tab, '_')
     end.
 
-dets_updated(Tab,Key) -> 
+dets_updated(Tab,Key) ->
     case get(mnesia_dumper_dets) of
 	undefined ->
 	    Empty = gb_trees:empty(),
@@ -588,7 +588,7 @@ insert_op(Tid, _, {op, change_table_copy_type, N, FromS, ToS, TabDef}, InPlace, 
 		    ok = load_from_logfile(ToS, Tab, Logtmp),
 		    file:delete(Logtmp),
 		    restore_indexes(Tab, ToS, Cs);
-		
+
 		{{ext,_FromAlias,_FromMod} = FromS, ToS} ->
                     %% TODO - update mnesia_schema:prepare_op when implemented
 		    disc_delete_table(Tab, FromS),
@@ -609,7 +609,7 @@ insert_op(Tid, _, {op, change_table_copy_type, N, FromS, ToS, TabDef}, InPlace, 
 			    file:delete(Logtmp)
 		    end,
 		    restore_indexes(Tab, ToS, Cs);
-		
+
 		_NoneAreExt ->
 
                     case {FromSem, ToSem} of
@@ -660,8 +660,8 @@ insert_op(Tid, _, {op, change_table_copy_type, N, FromS, ToS, TabDef}, InPlace, 
                         {disc_only_copies, disc_copies} ->
                             mnesia_monitor:unsafe_close_dets(Tab),
                             disc_delete_indecies(Tab, Cs, disc_only_copies),
-                            case InitBy of 
-                                startup -> 
+                            case InitBy of
+                                startup ->
                                     ignore;
                                 _ ->
                                     mnesia_log:ets2dcd(Tab),
@@ -1223,7 +1223,7 @@ close_files(InPlace, Outcome, InitBy, [{{?MODULE, Tab}, {opened_dumper, Type}} |
     case storage_semantics(Storage) of
 	disc_only_copies when InitBy /= startup ->
 	    ignore;
-	disc_copies when Storage /= unknown, Tab /= schema -> 
+	disc_copies when Storage /= unknown, Tab /= schema ->
 	    mnesia_log:close_log({?MODULE,Tab});
 	_ ->
 	    do_close(InPlace, Outcome, Tab, Type, Storage)

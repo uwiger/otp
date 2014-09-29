@@ -300,7 +300,7 @@ ms() ->
      %% Keep these last in the list, so
      %% mnesia_sup kills these last
      mnesia_ext_sup,
-     mnesia_monitor, 
+     mnesia_monitor,
      mnesia_event
     ].
 
@@ -2016,7 +2016,7 @@ display_tab_info() ->
     MasterTabs = mnesia_recover:get_master_node_tables(),
     io:format("master node tables = ~p~n", [lists:sort(MasterTabs)]),
 
-    case get_backend_types() of 
+    case get_backend_types() of
 	[] -> ok;
 	Ts -> list_backend_types(Ts, "backend types      = ")
     end,
@@ -2376,7 +2376,7 @@ delete_schema(Ns) ->
 add_backend_type(Alias, Module) ->
     mnesia_schema:add_backend_type(Alias, Module).
 
-backup(Opaque) -> 
+backup(Opaque) ->
     mnesia_log:backup(Opaque).
 
 backup(Opaque, Mod) ->

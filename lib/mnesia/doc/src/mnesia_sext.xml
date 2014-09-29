@@ -424,7 +424,7 @@ WordsRep = 16#FFFFffff - Words,
 	<p>For tuples, <c>{1,'_',3}</c> encoded and decoded, will
 	result in <c>{1,'_','_'}</c>, i.e. the tuple size is kept, but
 	the elements after the first wildcard are replaced with
-	wildcards.</p> 
+	wildcards.</p>
       </desc>
     </func>
     <func>
@@ -479,6 +479,5 @@ WordsRep = 16#FFFFffff - Words,
     <p>mnesia(3), mnesia_schema(3)
       </p>
   </section>
-  
-</erlref>
 
+</erlref>

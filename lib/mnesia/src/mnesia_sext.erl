@@ -184,7 +184,7 @@ enc_prefix(X) when is_atom(X) ->
 %% encoded with {@link encode_sb32/1}, rather than {@link encode/1}.
 %% @end
 %%
-prefix_sb32(X) ->    
+prefix_sb32(X) ->
     chop_prefix_tail(to_sb32(prefix(X))).
 
 enc_prefix_sb32(X) ->
@@ -321,7 +321,7 @@ encode_pid(P) ->
     <<131,103,100,ALen:16,Name:ALen/binary,Rest:9/binary>> = PBin,
     NameEnc = encode_bin_elems(Name),
     <<?pid, NameEnc/binary, Rest/binary>>.
-      
+
 encode_port(P) ->
     PBin = term_to_binary(P),
     <<131,102,100,ALen:16,Name:ALen/binary,Rest:5/binary>> = PBin,
@@ -334,7 +334,7 @@ encode_ref(R) ->
     NameEnc = encode_bin_elems(Name),
     RestEnc = encode_bin_elems(Rest),
     <<?reference, NameEnc/binary, RestEnc/binary>>.
-      
+
 
 encode_atom(A) ->
     Bin = list_to_binary(atom_to_list(A)),
@@ -350,7 +350,7 @@ encode_number(N, Legacy) when is_integer(N) ->
 encode_number(F, _Legacy) when is_float(F) ->
     encode_float(F).
 
-%% 
+%%
 %% IEEE 764 Binary 64 standard representation
 %% http://en.wikipedia.org/wiki/Double_precision_floating-point_format
 %%
@@ -363,7 +363,7 @@ encode_number(F, _Legacy) when is_float(F) ->
 %%
 %% We perform the following operations:
 %% - if E < 1023 (see Exponent bias), the integer part is 0
-%% 
+%%
 encode_float(F) ->
     <<Sign:1, Exp0:11, Frac:52>> = <<F/float>>,
     ?dbg("F = ~p | Exp0 = ~p | Frac = ~p~n", [cF, Exp0, Frac]),
@@ -407,7 +407,7 @@ encode_int(I,R, _Legacy) when I >= 0, I =< 16#7fffffff ->
     ?dbg("encode_int(~p, ~p)~n", [I,R]),
     if R == none ->
 	    << ?pos4, I:31, 0:1 >>;
-       true -> 
+       true ->
 	    RSz = bit_size(R),
 	    <<Fraction:RSz>> = R,
 	    ?dbg("Fraction = ~p~n", [Fraction]),
@@ -552,7 +552,7 @@ encode_big_neg(I) ->
     WordsAdj = 16#ffffFFFF - Words,
     ?dbg("WordsAdj = ~p~n", [WordsAdj]),
     <<WordsAdj:32, Bin/binary>>.
-    
+
 encode_big1(I) ->
     encode_big1(I, []).
 
@@ -609,7 +609,7 @@ is_wild('_') ->
 is_wild(A) when is_atom(A) ->
     case atom_to_list(A) of
 	"\$" ++ S ->
-	    try begin 
+	    try begin
 		    _ = list_to_integer(S),
 		    true
 		end
@@ -967,7 +967,7 @@ decode_neg_big(Bin) ->
     end.
 
 
-%% optimization - no need to loop through a very large number of zeros.    
+%% optimization - no need to loop through a very large number of zeros.
 strip_first_one(I) ->
     Sz = if I < 16#ff -> 8;
 	    I < 16#ffff -> 16;
@@ -985,7 +985,7 @@ decode_binary(<<8, Rest/binary>>) ->  {<<>>, Rest};
 decode_binary(B)     ->  decode_binary(B, 0, <<>>).
 
 decode_binary(<<1:1,H:8,Rest/bitstring>>, N, Acc) ->
-    case Rest of 
+    case Rest of
 	<<1:1,_/bitstring>> ->
 	    decode_binary(Rest, N+9, << Acc/binary, H >>);
 	_ ->
@@ -1000,7 +1000,7 @@ decode_neg_binary(<<247, Rest/binary>>) ->  {<<>>, Rest};  % 16#ff - 8
 decode_neg_binary(B)     ->  decode_neg_binary(B, 0, <<>>).
 
 decode_neg_binary(<<0:1,H:8,Rest/bitstring>>, N, Acc) ->
-    case Rest of 
+    case Rest of
 	<<0:1,_/bitstring>> ->
 	    decode_neg_binary(Rest, N+9, << Acc/binary, (16#ff - H) >>);
 	_ ->
@@ -1047,13 +1047,13 @@ get_max(I, W, Max) when I > Max ->
     get_max(I, W+1, (Max bsl 64) bor ?IMAX1);
 get_max(_, W, Max) ->
     {W, Max}.
-    
+
 %% @spec to_sb32(Bits::bitstring()) -> binary()
 %% @doc Converts a bitstring into an sb-encoded bitstring
 %%
-%% sb32 (Sortable base32) is a variant of RFC3548, slightly rearranged to 
-%% preserve the lexical sorting properties. Base32 was chosen to avoid 
-%% filename-unfriendly characters. Also important is that the padding 
+%% sb32 (Sortable base32) is a variant of RFC3548, slightly rearranged to
+%% preserve the lexical sorting properties. Base32 was chosen to avoid
+%% filename-unfriendly characters. Also important is that the padding
 %% character be less than any character in the alphabet
 %%
 %% sb32 alphabet:
@@ -1074,7 +1074,7 @@ to_sb32(Bits) when is_bitstring(Bits) ->
 	    0 -> {Bits, <<>>, <<>>};
 	    R -> sb32_encode_chunks(Sz, R, Bits)
 	end,
-    Enc = << << (c2sb32(C1)) >> || 
+    Enc = << << (c2sb32(C1)) >> ||
 	      <<C1:5>> <= Chunk >>,
     if Rest == << >> ->
 	    Enc;
@@ -1103,9 +1103,9 @@ from_sb32(<< C:8, "------" >>) -> << (sb322c(C)):3 >>;
 from_sb32(<< C:8, "----" >>  ) -> << (sb322c(C)):1 >>;
 from_sb32(<< C:8, "---" >>   ) -> << (sb322c(C)):4 >>;
 from_sb32(<< C:8, "-" >>     ) -> << (sb322c(C)):2 >>;
-from_sb32(<< C:8, Rest/bitstring >>) -> 
+from_sb32(<< C:8, Rest/bitstring >>) ->
     << (sb322c(C)):5, (from_sb32(Rest))/bitstring >>;
-from_sb32(<< >>) -> 
+from_sb32(<< >>) ->
     << >>.
 
 c2sb32(I) when 0  =< I, I =< 9  -> $0 + I;
@@ -1131,7 +1131,7 @@ from_hex(Bin) ->
     << << (hex2nib(H)):4 >> || <<H:8>> <= Bin >>.
 
 nib2hex(N) when  0 =< N, N =< 9 -> $0 + N;
-nib2hex(N) when 10 =< N, N =< 15-> $A + N - 10. 
+nib2hex(N) when 10 =< N, N =< 15-> $A + N - 10.
 
 hex2nib(C) when $0 =< C, C =< $9 -> C - $0;
 hex2nib(C) when $A =< C, C =< $F -> C - $A + 10.

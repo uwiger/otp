@@ -658,19 +658,19 @@ expand_frag_cstructs(1, NR, ND, NDO, NExt, CommonCs, Dist, Pool, FH, Mode) ->
 set_frag_nodes(NR, ND, NDO, NExt, Cs, [Head | Tail], Acc) when NR > 0 ->
     Pos = #cstruct.ram_copies,
     {Cs2, Head2} = set_frag_node(Cs, Pos, Head),
-    set_frag_nodes(NR - 1, ND, NDO, NExt, Cs2, Tail, [Head2 | Acc]); 
+    set_frag_nodes(NR - 1, ND, NDO, NExt, Cs2, Tail, [Head2 | Acc]);
 set_frag_nodes(NR, ND, NDO, NExt, Cs, [Head | Tail], Acc) when ND > 0 ->
     Pos = #cstruct.disc_copies,
     {Cs2, Head2} = set_frag_node(Cs, Pos, Head),
-    set_frag_nodes(NR, ND - 1, NDO, NExt, Cs2, Tail, [Head2 | Acc]); 
+    set_frag_nodes(NR, ND - 1, NDO, NExt, Cs2, Tail, [Head2 | Acc]);
 set_frag_nodes(NR, ND, NDO, NExt, Cs, [Head | Tail], Acc) when NDO > 0 ->
     Pos = #cstruct.disc_only_copies,
     {Cs2, Head2} = set_frag_node(Cs, Pos, Head),
-    set_frag_nodes(NR, ND, NDO - 1, NExt, Cs2, Tail, [Head2 | Acc]); 
+    set_frag_nodes(NR, ND, NDO - 1, NExt, Cs2, Tail, [Head2 | Acc]);
 set_frag_nodes(NR, ND, NDO, NExt, Cs, [Head | Tail], Acc) when NExt > 0 ->
     Pos = #cstruct.external_copies,
     {Cs2, Head2} = set_frag_node(Cs, Pos, Head),
-    set_frag_nodes(NR, ND, NDO, NExt - 1, Cs2, Tail, [Head2 | Acc]); 
+    set_frag_nodes(NR, ND, NDO, NExt - 1, Cs2, Tail, [Head2 | Acc]);
 set_frag_nodes(0, 0, 0, 0, Cs, RestDist, ModDist) ->
     {Cs, ModDist, RestDist};
 set_frag_nodes(_, _, _, _, Cs, [], _) ->

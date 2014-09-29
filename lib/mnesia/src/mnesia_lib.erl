@@ -389,7 +389,7 @@ validate_key(Tab, Key) ->
 	{'EXIT', _} ->
 	    mnesia:abort({no_exists, Tab})
     end.
-    
+
 
 validate_record(Tab, Obj) ->
     case ?catch_val({Tab, record_validation}) of
@@ -1121,7 +1121,7 @@ db_get(Tab, Key) ->
 db_get(ram_copies, Tab, Key) -> ?ets_lookup(Tab, Key);
 db_get(disc_copies, Tab, Key) -> ?ets_lookup(Tab, Key);
 db_get(disc_only_copies, Tab, Key) -> dets:lookup(Tab, Key);
-db_get({ext, Alias, Mod}, Tab, Key) -> 
+db_get({ext, Alias, Mod}, Tab, Key) ->
     Mod:lookup(Alias, Tab, Key).
 
 db_init_chunk(Tab) ->

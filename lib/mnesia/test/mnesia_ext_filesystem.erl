@@ -169,7 +169,7 @@ remove_aliases(_) ->
 %%
 %% The receiver can communicate with the Sender by returning
 %% {{more, Msg}, St} from receive_data/4. The sender will be called through
-%% sender_handle_info(Msg, ...), where it can adjust its ChunkFun and 
+%% sender_handle_info(Msg, ...), where it can adjust its ChunkFun and
 %% Continuation. Note that the message from the receiver is sent once the
 %% receive_data/4 function returns. This is slightly different from the
 %% normal mnesia table synch, where the receiver acks immediately upon
@@ -177,7 +177,7 @@ remove_aliases(_) ->
 %%
 
 sender_init(Alias, Tab, RemoteStorage, Pid) ->
-    %% Need to send a message to the receiver. It will be handled in 
+    %% Need to send a message to the receiver. It will be handled in
     %% receiver_first_message/4 below. There could be a volley of messages...
     {ext, Alias, ?MODULE} = RemoteStorage, % limitation for now
     Pid ! {self(), {first, info(Alias, Tab, size)}},
@@ -191,7 +191,7 @@ sender_init(Alias, Tab, RemoteStorage, Pid) ->
     {fun() ->
 	     {ok, Fs} = file:list_dir(MP),
 	     FI = fetch_files(Fs, MP),
-	     {[{[], FI}], {[F || {F,dir} <- FI], MP, MP, 
+	     {[{[], FI}], {[F || {F,dir} <- FI], MP, MP,
 			   fun() -> '$end_of_table' end}}
      end,
      chunk_fun()}.
@@ -433,7 +433,7 @@ split_key1(Bin) ->
 
 unsplit_key(Bin) ->
     << <<C>> || <<C>> <= Bin,
- 		C =/= $/ >>.
+		C =/= $/ >>.
 
 
 create_table(_Alias, Tab, _Props) ->
@@ -990,7 +990,7 @@ relevant_guards(Gs, Vars) ->
 				     andalso (Vg -- Vars1) == []
 			 end, Gs)
     end.
-				     
+
 
 do_select(Alias, Tab, Dir, MS, Limit) ->
     MP = remove_ending_slash(Dir),
@@ -1291,7 +1291,7 @@ terminate(_Reason, _St) ->
 default_info(size)   -> 0;
 default_info(_) -> undefined.
 
-update_size_info(#st{alias = Alias, tab = Tab, data_mp = MP} = St) ->    
+update_size_info(#st{alias = Alias, tab = Tab, data_mp = MP} = St) ->
     PrevInfo = info(Alias, Tab, size),
     io:fwrite("Updating size info of Tab = ~p (~p)...~n", [Tab, PrevInfo]),
     case should_update_size(Tab) of

@@ -380,7 +380,7 @@ force_load_table(Tab) when is_atom(Tab), Tab /= schema ->
 	disc_only_copies ->
 	    do_force_load_table(Tab);
         {external_copies, _} ->
-            do_force_load_table(Tab);        
+            do_force_load_table(Tab);
 	unknown ->
 	    set({Tab, load_by_force}, true),
 	    cast({force_load_updated, Tab}),

@@ -294,7 +294,7 @@ init_receiver(Node, Tab,Storage,Cs,Reason) ->
 start_remote_sender(Node,Tab,Storage) ->
     mnesia_controller:start_remote_sender(Node, Tab, self(), Storage),
     put(mnesia_table_sender_node, {Tab, Node}),
-    receive 
+    receive
 	{SenderPid, {first, _} = Msg}
 	  when is_pid(SenderPid), element(1, Storage) == ext ->
 	    {ext, Alias, Mod} = Storage,
@@ -485,7 +485,7 @@ ext_init_table(Action, Alias, Mod, Tab, Fun, State, Sender) ->
 	{Data, NewFun} ->
 	    case Mod:receive_data(Data, Alias, Tab, Sender, State) of
 		{more, NewState} ->
-		    ext_init_table({read, more}, Alias, Mod, 
+		    ext_init_table({read, more}, Alias, Mod,
 				   Tab, NewFun, NewState, Sender);
 		{{more,Msg}, NewState} ->
 		    ext_init_table({read, Msg}, Alias, Mod,
@@ -680,7 +680,7 @@ db_match_erase({disc_only_copies, Tab}, Pat) ->
 db_match_erase({{external_copies, Mod}, Tab}, Pat) ->
     % "ets style" is to return true
     % "dets style" is to return N | { error, Reason }
-    %   or sometimes ok (?) 
+    %   or sometimes ok (?)
     % be nice and accept both
     case Mod:match_delete(Tab, Pat) of
       N when is_integer (N) -> ok;
@@ -730,15 +730,15 @@ do_send_table(Pid, Tab, Storage, RemoteS) ->
 		end;
 	    Storage ->
 		%% Send first
-		TabSize = mnesia:table_info(Tab, size),	    
+		TabSize = mnesia:table_info(Tab, size),
 		KeysPerTransfer = calc_nokeys(Storage, Tab),
 		ChunkData = dets:info(Tab, bchunk_format),
-		
-		UseDetsChunk = 
-		    Storage == RemoteS andalso 
-		    Storage == disc_only_copies andalso 
+
+		UseDetsChunk =
+		    Storage == RemoteS andalso
+		    Storage == disc_only_copies andalso
 		    ChunkData /= undefined,
-		if 
+		if
 		    UseDetsChunk == true ->
 			DetsInfo = erlang:system_info(version),
 			Pid ! {self(), {first, TabSize, {DetsInfo, ChunkData}}};
@@ -750,13 +750,13 @@ do_send_table(Pid, Tab, Storage, RemoteS) ->
 	end,
     %% Debug info
     put(mnesia_table_sender, {Tab, node(Pid), Pid}),
-    
+
     SendIt = fun() ->
 		     prepare_copy(Pid, Tab, Storage),
 		     send_more(Pid, 1, Chunk, Init(), Tab, Storage),
 		     finish_copy(Pid, Tab, Storage, RemoteS)
 	     end,
-    
+
     case catch SendIt() of
 	receiver_died ->
 	    cleanup_tab_copier(Pid, Storage, Tab),

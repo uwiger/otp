@@ -885,7 +885,7 @@ list2cs(List, ExtTypes) when is_list(List) ->
     DetsOpts = proplists:get_value(dets, BEProps, []),
     is_list(DetsOpts) orelse mnesia:abort({badarg, Name, {dets, DetsOpts}}),
     [CheckProp(Prop, BadDetsOpts) || Prop <- DetsOpts],
-        
+
     case lists:keymember(mnesia, 1, application:which_applications()) of
         true ->
             Keys = check_keys(Name, List),
@@ -1038,9 +1038,9 @@ attr_to_pos(Attr, _, _) ->
 check_keys(Tab, Attrs) ->
     Types = [T || {T,_} <- get_ext_types()],
     check_keys(Tab, Attrs, Types ++ record_info(fields, cstruct)).
-    
+
 check_keys(Tab, [{Key, _Val} | Tail], Items) ->
-    Key1 = if 
+    Key1 = if
                is_tuple(Key) ->
                    element(1, Key);
                true ->
@@ -1551,7 +1551,7 @@ legal_backend_name(Name) ->
 
 %% Used e.g. by mnesia:system_info(backend_types).
 backend_types() ->
-    [ram_copies, disc_copies, disc_only_copies | 
+    [ram_copies, disc_copies, disc_only_copies |
      [T || {T,_} <- get_ext_types()]].
 
 add_index_plugin(Name, Module, Function) ->
@@ -2703,10 +2703,10 @@ prepare_op(_Tid, {op, change_table_copy_type,  N, FromS, ToS, TabDef}, _WaitFor)
 	    %% FromIsRam = is_ram_table(FromS),
 	    %% ToIsRam = is_ram_table(ToS),
             %% if
-            %%     element(1,FromS) == ext, element(1,ToS) == ext -> 
+            %%     element(1,FromS) == ext, element(1,ToS) == ext ->
             %%         %% TODO: Not implemented in mnesia_dumper:insert_op
 	    %% 	    mnesia:abort({nyi, transform_ext_to_ext});
-            %%     element(1,FromS) == ext -> 
+            %%     element(1,FromS) == ext ->
             %%         %% TODO: Not implemented in mnesia_dumper:insert_op
 	    %% 	    mnesia:abort({nyi, transform_ext_to_other});
             %%     FromIsRam, ToIsRam ->
@@ -3460,7 +3460,7 @@ where_to_commit(Tab, CsList) ->
 				[{N,{ext,Alias,Mod}} || N <- Ns]
 			end, pick(Tab, external_copies, CsList, [])),
     Ram ++ Disc ++ DiscO ++ Ext.
-    
+
 %% Changes of the Meta info of schema itself is not allowed
 restore_schema([{schema, schema, _List} | Schema], R) ->
     restore_schema(Schema, R);

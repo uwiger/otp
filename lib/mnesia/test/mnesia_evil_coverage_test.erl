@@ -1034,7 +1034,7 @@ change_table_access_mode(Config) when is_list(Config) ->
 
     %% in vanilla this fails with {aborted,{no_exists,_}}
     %% with mnesiaex this fails with {aborted,{{no_exists,_},[...]}}
-    ?match({aborted, _Reason1}, 
+    ?match({aborted, _Reason1},
 	   mnesia:change_table_access_mode(err_tab, read_only)),
     %% in vanilla this fails with {aborted,{no_exists,_}}
     %% with mnesiaex this fails with {aborted,{{no_exists,_},[...]}}
