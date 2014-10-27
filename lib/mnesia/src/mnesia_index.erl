@@ -1,19 +1,19 @@
 %%
 %% %CopyrightBegin%
-%% 
+%%
 %% Copyright Ericsson AB 1996-2012. All Rights Reserved.
-%% 
+%%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
 %% compliance with the License. You should have received a copy of the
 %% Erlang Public License along with this software. If not, it can be
 %% retrieved online at http://www.erlang.org/.
-%% 
+%%
 %% Software distributed under the License is distributed on an "AS IS"
 %% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
 %% the License for the specific language governing rights and limitations
 %% under the License.
-%% 
+%%
 %% %CopyrightEnd%
 %%
 
@@ -459,7 +459,6 @@ make_ram_index(Tab, Storage, [Pos | Tail]) ->
 
 add_ram_index(Tab, Storage, {Pos, Type,_}) ->
     verbose("Creating index for ~w ~n", [Tab]),
-    %% Type = determine_type(IxType, Storage),
     IxValsF = index_vals_f(Storage, Tab, Pos),
     {IxFun, EtsType} =
 	case Type of
@@ -515,7 +514,7 @@ add_index_info(Tab, SetOrBag, IxElem) ->
 	    mnesia_lib:set({Tab, index_info}, Index),
 	    mnesia_lib:set({Tab, index}, index_positions(Index)),
 	    NewC = lists:keyreplace(index, 1, Commit, Index),
-	    mnesia_lib:set({Tab, commit_work}, 
+	    mnesia_lib:set({Tab, commit_work},
 			   mnesia_lib:sort_commit(NewC))
     end.
 
@@ -538,14 +537,14 @@ del_index_info(Tab, Pos) ->
 		    mnesia_lib:set({Tab, index_info}, IndexInfo),
 		    mnesia_lib:set({Tab, index}, index_positions(IndexInfo)),
 		    NewC = lists:keydelete(index, 1, Commit),
-		    mnesia_lib:set({Tab, commit_work}, 
+		    mnesia_lib:set({Tab, commit_work},
 				   mnesia_lib:sort_commit(NewC));
 		New ->
 		    Index = Old#index{pos_list = New},
 		    mnesia_lib:set({Tab, index_info}, Index),
 		    mnesia_lib:set({Tab, index}, index_positions(Index)),
 		    NewC = lists:keyreplace(index, 1, Commit, Index),
-		    mnesia_lib:set({Tab, commit_work}, 
+		    mnesia_lib:set({Tab, commit_work},
 				   mnesia_lib:sort_commit(NewC))
 	    end
     end.

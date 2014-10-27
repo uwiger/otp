@@ -833,13 +833,8 @@ list2cs(List, ExtTypes) when is_list(List) ->
     Dc = pick(Name, disc_copies, List, []),
     Doc = pick(Name, disc_only_copies, List, []),
 
-    %% Does not work as its stored as e.g. {leveldb_copies, [node()]} in dets
-    %% Ext = pick(Name, external_copies, List, []),
-    %% TODO: shall we change representation in dets?
-
     Ext = pick_external_copies(List, ExtTypes),
     Rc = case {Rc0, Dc, Doc, Ext} of
-             %% TODO: should this not abort ??
              {[], [], [], []} -> [node()];
              _ -> Rc0
          end,
@@ -1894,13 +1889,6 @@ new_cs(Cs, Node, disc_copies, add) ->
     Cs#cstruct{disc_copies = opt_add(Node, Cs#cstruct.disc_copies)};
 new_cs(Cs, Node, disc_only_copies, add) ->
     Cs#cstruct{disc_only_copies = opt_add(Node, Cs#cstruct.disc_only_copies)};
-%% new_cs(Cs, Node, {ext, Alias, Mod}, add) ->
-%%     Ext = lists:map(fun({{ext, A, M}, Ns}) when A==Alias, M==Mod ->
-%% 			    {{ext, Alias, Mod}, opt_add(Node, Ns)};
-%% 		       (X) ->
-%% 			    X
-%% 		    end, Cs#cstruct.external_copies),
-%%     Cs#cstruct{external_copies = Ext};
 new_cs(Cs, Node, ram_copies, del) ->
     Cs#cstruct{ram_copies = lists:delete(Node , Cs#cstruct.ram_copies)};
 new_cs(Cs, Node, disc_copies, del) ->
@@ -1908,13 +1896,6 @@ new_cs(Cs, Node, disc_copies, del) ->
 new_cs(Cs, Node, disc_only_copies, del) ->
     Cs#cstruct{disc_only_copies =
                lists:delete(Node , Cs#cstruct.disc_only_copies)};
-%% new_cs(Cs, Node, {ext, Alias, Mod}, del) ->
-%%     Ext = lists:map(fun({{ext, A, M}, Ns}) when A==Alias, M==Mod ->
-%% 			    {{ext, Alias, Mod}, lists:delete(Node, Ns)};
-%% 		       (X) ->
-%% 			    X
-%% 		    end, Cs#cstruct.external_copies),
-%%     Cs#cstruct{external_copies = Ext};
 new_cs(#cstruct{external_copies = ExtCps} = Cs, Node, Storage0, Op) ->
     Storage = case Storage0 of
 		  {ext, Alias, _} -> Alias;
@@ -2699,22 +2680,6 @@ prepare_op(_Tid, {op, change_table_copy_type,  N, FromS, ToS, TabDef}, _WaitFor)
 	    end;
 
 	element(1,FromS) == ext; element(1,ToS) == ext ->
-
-	    %% FromIsRam = is_ram_table(FromS),
-	    %% ToIsRam = is_ram_table(ToS),
-            %% if
-            %%     element(1,FromS) == ext, element(1,ToS) == ext ->
-            %%         %% TODO: Not implemented in mnesia_dumper:insert_op
-	    %% 	    mnesia:abort({nyi, transform_ext_to_ext});
-            %%     element(1,FromS) == ext ->
-            %%         %% TODO: Not implemented in mnesia_dumper:insert_op
-	    %% 	    mnesia:abort({nyi, transform_ext_to_other});
-            %%     FromIsRam, ToIsRam ->
-            %%         %% TODO: Not implemented at all
-	    %% 	    mnesia:abort({nyi, transform_ext_ram_to_ram});
-            %%     true ->
-            %%         ignore
-            %% end,
 
 	    if ToS == ram_copies ->
 		    create_ram_table(Tab, Cs);
@@ -3874,19 +3839,6 @@ compare_storage_type(true, One, Another) ->
 compare_storage_type(false, _One, _Another) ->
     incompatible.
 
-%% storage_semantics({ext,Alias,Mod}) ->
-%%     Mod:semantics(Alias, storage);
-%% storage_semantics(S) ->
-%%     S.
-
-
-%% is_ram_table(S) ->
-%%     case storage_semantics(S) of
-%% 	ram_copies -> true;
-%% 	disc_copies -> true;
-%% 	_ -> false
-%%     end.
-
 change_storage_type(N, ram_copies, Cs) ->
     Nodes = [N | Cs#cstruct.ram_copies],
     Cs#cstruct{ram_copies = mnesia_lib:uniq(Nodes)};
@@ -3996,4 +3948,3 @@ unannounce_im_running([N | Ns]) ->
     unannounce_im_running(Ns);
 unannounce_im_running([]) ->
     ok.
-
