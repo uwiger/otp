@@ -714,7 +714,7 @@ do_insert_schema_ops(_Store, []) ->
 
 api_list2cs(List) when is_list(List) ->
     Name = pick(unknown, name, List, must),
-    Keys = check_keys(Name, List, record_info(fields, cstruct)),
+    Keys = check_keys(Name, List),
     check_duplicates(Name, Keys),
     list2cs(List);
 api_list2cs(Other) ->
@@ -879,10 +879,11 @@ list2cs(List, ExtTypes) when is_list(List) ->
             Keys = check_keys(Name, List),
             check_duplicates(Name, Keys);
         false ->
-            %% check_keys cannot be executed when mnesia is not
+            %% check_keys/2 cannot be executed when mnesia is not
             %% running, due to it not being possible to read what ext
-            %% backends are loaded. TODO: is this correct?
-            ignore
+            %% backends are loaded.
+	    Keys = check_keys(Name, List, record_info(fields, cstruct)),
+	    check_duplicates(Name, Keys)
     end,
 
     Cs0 = #cstruct{name = Name,
@@ -1018,11 +1019,11 @@ attr_to_pos(Attr, _, _) ->
     mnesia:abort({bad_type, Attr}).
 
 check_keys(Tab, Attrs) ->
-    check_keys(Tab, Attrs, record_info(fields, cstruct)).
+    Types = [T || {T,_} <- get_ext_types()],
+    check_keys(Tab, Attrs, Types ++ record_info(fields, cstruct)).
 
 check_keys(Tab, Attrs, Fields) ->
-    Types = [T || {T,_} <- get_ext_types()],
-    check_keys_(Tab, Attrs, Types ++ Fields).
+    check_keys_(Tab, Attrs, Fields).
 
 check_keys_(Tab, [{Key, _Val} | Tail], Items) ->
     Key1 = if
@@ -3896,4 +3897,3 @@ unannounce_im_running([N | Ns]) ->
     unannounce_im_running(Ns);
 unannounce_im_running([]) ->
     ok.
-

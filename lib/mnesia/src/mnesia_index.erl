@@ -1,19 +1,19 @@
 %%
 %% %CopyrightBegin%
-%% 
+%%
 %% Copyright Ericsson AB 1996-2013. All Rights Reserved.
-%% 
+%%
 %% The contents of this file are subject to the Erlang Public License,
 %% Version 1.1, (the "License"); you may not use this file except in
 %% compliance with the License. You should have received a copy of the
 %% Erlang Public License along with this software. If not, it can be
 %% retrieved online at http://www.erlang.org/.
-%% 
+%%
 %% Software distributed under the License is distributed on an "AS IS"
 %% basis, WITHOUT WARRANTY OF ANY KIND, either express or implied. See
 %% the License for the specific language governing rights and limitations
 %% under the License.
-%% 
+%%
 %% %CopyrightEnd%
 %%
 
@@ -38,7 +38,6 @@
 	 get_index_table/3,
 
 	 tab2filename/2,
-	 tab2tmp_filename/2,
 	 init_index/2,
 	 init_indecies/3,
 	 del_transient/2,
@@ -89,7 +88,6 @@ add_index(#index{pos_list = PosL, setorbag = SorB},
 add_index2([{{Pos,Type}, Ixt} |Tail], bag, Storage, Tab, K, Obj, OldRecs) ->
     ValsF = index_vals_f(Storage, Tab, Pos),
     Vals = ValsF(Obj),
-    %% Type = determine_type(IxType, Storage),
     put_index_vals(Type, Ixt, Vals, K),
     add_index2(Tail, bag, Storage, Tab, K, Obj, OldRecs);
 add_index2([{{Pos, Type}, Ixt} |Tail], SorB, Storage, Tab, K, Obj, OldRecs) ->
@@ -102,7 +100,6 @@ add_index2([{{Pos, Type}, Ixt} |Tail], SorB, Storage, Tab, K, Obj, OldRecs) ->
 	      _ ->
 		  OldRecs
 	  end,
-    %% Type = determine_type(IxType, Storage),
     [del_ixes(Type, Ixt, ValsF, OldObj, K) || OldObj <- Old],
     put_index_vals(Type, Ixt, NewVals, K),
     add_index2(Tail, SorB, Storage, Tab, K, Obj, OldRecs);
@@ -114,7 +111,6 @@ delete_index(Index, Storage, Tab, K) ->
 delete_index2([{{Pos, Type}, Ixt} | Tail], Storage, Tab, K) ->
     DelObjs = mnesia_lib:db_get(Storage, Tab, K),
     ValsF = index_vals_f(Storage, Tab, Pos),
-    %% Type = determine_type(IxType, Storage),
     [del_ixes(Type, Ixt, ValsF, Obj, K) || Obj <- DelObjs],
     delete_index2(Tail, Storage, Tab, K);
 delete_index2([], _Storage, _Tab, _K) -> ok.
@@ -138,7 +134,6 @@ del_object_index(#index{pos_list = PosL, setorbag = SorB}, Storage, Tab, K, Obj)
 del_object_index2([], _, _Storage, _Tab, _K, _Obj) -> ok;
 del_object_index2([{{Pos, Type}, Ixt} | Tail], SoB, Storage, Tab, K, Obj) ->
     ValsF = index_vals_f(Storage, Tab, Pos),
-    %% Type = determine_type(IxType, Storage),
     case SoB of
 	bag ->
 	    del_object_bag(Type, ValsF, Tab, K, Obj, Ixt);
@@ -223,7 +218,6 @@ dirty_read2(Tab, IxKey, Pos) ->
     #index{pos_list = PosL} = val({Tab, index_info}),
     Storage = val({Tab, storage_type}),
     {Type, Ixt} = pick_index(PosL, Tab, Pos),
-    %% Type = determine_type(IxType, Storage),
     Pat = case Type of
 	      ordered -> [{{{IxKey, '$1'}}, [], ['$1']}];
 	      bag     -> [{{IxKey, '$1'}, [], ['$1']}]
@@ -242,12 +236,6 @@ dirty_read2(Tab, IxKey, Pos) ->
 		  end, Acc, mnesia_lib:db_get(Storage, Tab, K))
 	end, [], Keys)).
 
-%% r_keys([[H]|T], Storage, Tab, Ack) ->
-%%     V = mnesia_lib:db_get(Tab, H),
-%%     r_keys(T, Tab, V ++ Ack);
-%% r_keys([], _, Ack) ->
-%%     Ack.
-
 pick_index([{{{Pfx,_,_},IxType}, Ixt}|_], _Tab, {_} = Pfx) ->
     {IxType, Ixt};
 pick_index([{{Pos,IxType}, Ixt}|_], _Tab, Pos) ->
@@ -263,7 +251,6 @@ pick_index([], Tab, Pos) ->
 %% We can have several indexes on the same table
 %% this can be a fairly costly operation if table is *very* large
 
-%% TODO: it is always a tuple ?
 tab2filename(Tab, {A}) when is_atom(A) ->
     mnesia_lib:dir(Tab) ++ "_-" ++ atom_to_list(A) ++ "-.DAT";
 tab2filename(Tab, T) when is_tuple(T) ->
@@ -271,11 +258,6 @@ tab2filename(Tab, T) when is_tuple(T) ->
 tab2filename(Tab, Pos) when is_integer(Pos) ->
     mnesia_lib:dir(Tab) ++ "_" ++ integer_to_list(Pos) ++ ".DAT".
 
-tab2tmp_filename(Tab, {A}) when is_atom(A) ->
-    mnesia_lib:dir(Tab) ++ "_-" ++ atom_to_list(A) ++ "-.TMP";
-tab2tmp_filename(Tab, Pos) ->
-    mnesia_lib:dir(Tab) ++ "_" ++ integer_to_list(Pos) ++ ".TMP".
-        
 init_index(Tab, Storage) ->
     Cs = val({Tab, cstruct}),
     PosList = Cs#cstruct.index,
@@ -372,12 +354,13 @@ init_ext_index(_, _, _, _, []) ->
 init_ext_index(Tab, Storage, Alias, Mod, [{Pos,Type,_} | Tail]) ->
     PosInfo = {Pos, Type},
     IxTag = {Tab, index, PosInfo},
-    Res = Mod:create_table(Alias, IxTag, []),
+    _Res = Mod:create_table(Alias, IxTag, []),
     CS = val({Tab, cstruct}),
     Mod:load_table(Alias, IxTag, init_index, mnesia_schema:cs2list(CS)),
-    case Res of
-        ok ->
-            %% Type = determine_type(IxType, Alias, Mod),
+    case Mod:is_index_consistent(Alias, IxTag) of
+	false ->
+	    Mod:index_is_consistent(Alias, IxTag, false),
+	    Mod:match_delete(Alias, IxTag, '_'),
 	    IxValsF = index_vals_f(Storage, Tab, Pos),
             IxObjF = case Type of
                          bag     -> fun(IxVal, Key) -> {IxVal, Key} end;
@@ -395,38 +378,18 @@ init_ext_index(Tab, Storage, Alias, Mod, [{Pos,Type,_} | Tail]) ->
 			end, IxValsF(Rec)),
 		      Acc
 	      end, ok, Tab,
-	      [{'_', [], ['$_']}], 100);
-	%% [{'$1',[],[{{{element,Pos,'$1'},
-	%%              {element,2,'$1'}
-	%%             }}]}], 100);
-        {error, exists} ->
+	      [{'_', [], ['$_']}], 100),
+	    Mod:index_is_consistent(Alias, IxTag, true);
+        true ->
             ignore
     end,
 
-    %% TODO: is this line redundant ?? I.e., is it made elsewhere?
     mnesia_lib:set({Tab, {index, PosInfo}}, IxTag),
 
     add_index_info(Tab, val({Tab, setorbag}), {PosInfo, {Storage, IxTag}}),
     init_ext_index(Tab, Storage, Alias, Mod, Tail).
 
 
-
-%% determine_type(IxType, {ext, Alias, Mod}) ->
-%%     determine_type(IxType, Alias, Mod);
-%% determine_type(ordered, _) -> ordered_set;
-%% determine_type(bag, _    ) -> bag.
-
-%% determine_type(IxType, Alias, Mod) ->
-%%     Types = Mod:semantics(Alias, types),
-%%     case IxType of
-%% 	bag ->
-%% 	    case lists:member(bag, Types) of
-%% 		false -> bag;
-%% 		true  -> ordered_set
-%% 	    end;
-%% 	ordered ->
-%% 	    ordered_set
-%%     end.
 
 create_fun(Cont, Tab, Pos) ->
     IxF = index_vals_f(disc_only_copies, Tab, Pos),
@@ -466,7 +429,6 @@ make_ram_index(Tab, Storage, [Pos | Tail]) ->
 
 add_ram_index(Tab, Storage, {Pos, Type,_}) ->
     verbose("Creating index for ~w ~n", [Tab]),
-    %% Type = determine_type(IxType, Storage),
     IxValsF = index_vals_f(Storage, Tab, Pos),
     {IxFun, EtsType} =
 	case Type of
@@ -522,7 +484,7 @@ add_index_info(Tab, SetOrBag, IxElem) ->
 	    mnesia_lib:set({Tab, index_info}, Index),
 	    mnesia_lib:set({Tab, index}, index_positions(Index)),
 	    NewC = lists:keyreplace(index, 1, Commit, Index),
-	    mnesia_lib:set({Tab, commit_work}, 
+	    mnesia_lib:set({Tab, commit_work},
 			   mnesia_lib:sort_commit(NewC))
     end.
 
@@ -545,14 +507,14 @@ del_index_info(Tab, Pos) ->
 		    mnesia_lib:set({Tab, index_info}, IndexInfo),
 		    mnesia_lib:set({Tab, index}, index_positions(IndexInfo)),
 		    NewC = lists:keydelete(index, 1, Commit),
-		    mnesia_lib:set({Tab, commit_work}, 
+		    mnesia_lib:set({Tab, commit_work},
 				   mnesia_lib:sort_commit(NewC));
 		New ->
 		    Index = Old#index{pos_list = New},
 		    mnesia_lib:set({Tab, index_info}, Index),
 		    mnesia_lib:set({Tab, index}, index_positions(Index)),
 		    NewC = lists:keyreplace(index, 1, Commit, Index),
-		    mnesia_lib:set({Tab, commit_work}, 
+		    mnesia_lib:set({Tab, commit_work},
 				   mnesia_lib:sort_commit(NewC))
 	    end
     end.
@@ -567,7 +529,6 @@ db_put({dets, Ixt}, V) ->
 db_get({ram, Ixt}, K) ->
     ?ets_lookup(Ixt, K);
 db_get({{ext,_,_} = _Storage, {_,_,{_,Type}}} = Ixt, IxKey) ->
-    %% Type = determine_type(IxType, Storage),
     Pat = case Type of
 	      ordered -> [{{{IxKey, '$1'}}, [], [{{IxKey,'$1'}}]}];
 	      bag     -> [{{IxKey, '_'}, [], ['$_']}]
