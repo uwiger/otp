@@ -88,7 +88,6 @@ add_index(#index{pos_list = PosL, setorbag = SorB},
 add_index2([{{Pos,Type}, Ixt} |Tail], bag, Storage, Tab, K, Obj, OldRecs) ->
     ValsF = index_vals_f(Storage, Tab, Pos),
     Vals = ValsF(Obj),
-    %% Type = determine_type(IxType, Storage),
     put_index_vals(Type, Ixt, Vals, K),
     add_index2(Tail, bag, Storage, Tab, K, Obj, OldRecs);
 add_index2([{{Pos, Type}, Ixt} |Tail], SorB, Storage, Tab, K, Obj, OldRecs) ->
@@ -101,7 +100,6 @@ add_index2([{{Pos, Type}, Ixt} |Tail], SorB, Storage, Tab, K, Obj, OldRecs) ->
 	      _ ->
 		  OldRecs
 	  end,
-    %% Type = determine_type(IxType, Storage),
     [del_ixes(Type, Ixt, ValsF, OldObj, K) || OldObj <- Old],
     put_index_vals(Type, Ixt, NewVals, K),
     add_index2(Tail, SorB, Storage, Tab, K, Obj, OldRecs);
@@ -113,7 +111,6 @@ delete_index(Index, Storage, Tab, K) ->
 delete_index2([{{Pos, Type}, Ixt} | Tail], Storage, Tab, K) ->
     DelObjs = mnesia_lib:db_get(Storage, Tab, K),
     ValsF = index_vals_f(Storage, Tab, Pos),
-    %% Type = determine_type(IxType, Storage),
     [del_ixes(Type, Ixt, ValsF, Obj, K) || Obj <- DelObjs],
     delete_index2(Tail, Storage, Tab, K);
 delete_index2([], _Storage, _Tab, _K) -> ok.
@@ -137,7 +134,6 @@ del_object_index(#index{pos_list = PosL, setorbag = SorB}, Storage, Tab, K, Obj)
 del_object_index2([], _, _Storage, _Tab, _K, _Obj) -> ok;
 del_object_index2([{{Pos, Type}, Ixt} | Tail], SoB, Storage, Tab, K, Obj) ->
     ValsF = index_vals_f(Storage, Tab, Pos),
-    %% Type = determine_type(IxType, Storage),
     case SoB of
 	bag ->
 	    del_object_bag(Type, ValsF, Tab, K, Obj, Ixt);
@@ -222,7 +218,6 @@ dirty_read2(Tab, IxKey, Pos) ->
     #index{pos_list = PosL} = val({Tab, index_info}),
     Storage = val({Tab, storage_type}),
     {Type, Ixt} = pick_index(PosL, Tab, Pos),
-    %% Type = determine_type(IxType, Storage),
     Pat = case Type of
 	      ordered -> [{{{IxKey, '$1'}}, [], ['$1']}];
 	      bag     -> [{{IxKey, '$1'}, [], ['$1']}]
@@ -241,12 +236,6 @@ dirty_read2(Tab, IxKey, Pos) ->
 		  end, Acc, mnesia_lib:db_get(Storage, Tab, K))
 	end, [], Keys)).
 
-%% r_keys([[H]|T], Storage, Tab, Ack) ->
-%%     V = mnesia_lib:db_get(Tab, H),
-%%     r_keys(T, Tab, V ++ Ack);
-%% r_keys([], _, Ack) ->
-%%     Ack.
-
 pick_index([{{{Pfx,_,_},IxType}, Ixt}|_], _Tab, {_} = Pfx) ->
     {IxType, Ixt};
 pick_index([{{Pos,IxType}, Ixt}|_], _Tab, Pos) ->
@@ -262,7 +251,6 @@ pick_index([], Tab, Pos) ->
 %% We can have several indexes on the same table
 %% this can be a fairly costly operation if table is *very* large
 
-%% TODO: it is always a tuple ?
 tab2filename(Tab, {A}) when is_atom(A) ->
     mnesia_lib:dir(Tab) ++ "_-" ++ atom_to_list(A) ++ "-.DAT";
 tab2filename(Tab, T) when is_tuple(T) ->
@@ -396,30 +384,10 @@ init_ext_index(Tab, Storage, Alias, Mod, [{Pos,Type,_} | Tail]) ->
             ignore
     end,
 
-    %% TODO: is this line redundant ?? I.e., is it made elsewhere?
     mnesia_lib:set({Tab, {index, PosInfo}}, IxTag),
 
     add_index_info(Tab, val({Tab, setorbag}), {PosInfo, {Storage, IxTag}}),
     init_ext_index(Tab, Storage, Alias, Mod, Tail).
-
-
-
-%% determine_type(IxType, {ext, Alias, Mod}) ->
-%%     determine_type(IxType, Alias, Mod);
-%% determine_type(ordered, _) -> ordered_set;
-%% determine_type(bag, _    ) -> bag.
-
-%% determine_type(IxType, Alias, Mod) ->
-%%     Types = Mod:semantics(Alias, types),
-%%     case IxType of
-%% 	bag ->
-%% 	    case lists:member(bag, Types) of
-%% 		false -> bag;
-%% 		true  -> ordered_set
-%% 	    end;
-%% 	ordered ->
-%% 	    ordered_set
-%%     end.
 
 create_fun(Cont, Tab, Pos) ->
     IxF = index_vals_f(disc_only_copies, Tab, Pos),
@@ -559,7 +527,6 @@ db_put({dets, Ixt}, V) ->
 db_get({ram, Ixt}, K) ->
     ?ets_lookup(Ixt, K);
 db_get({{ext,_,_} = _Storage, {_,_,{_,Type}}} = Ixt, IxKey) ->
-    %% Type = determine_type(IxType, Storage),
     Pat = case Type of
 	      ordered -> [{{{IxKey, '$1'}}, [], [{{IxKey,'$1'}}]}];
 	      bag     -> [{{IxKey, '_'}, [], ['$_']}]

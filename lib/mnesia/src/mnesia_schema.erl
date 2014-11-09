@@ -886,10 +886,11 @@ list2cs(List, ExtTypes) when is_list(List) ->
             Keys = check_keys(Name, List),
             check_duplicates(Name, Keys);
         false ->
-            %% check_keys cannot be executed when mnesia is not
+            %% check_keys/2 cannot be executed when mnesia is not
             %% running, due to it not being possible to read what ext
-            %% backends are loaded. TODO: is this correct?
-            ignore
+            %% backends are loaded.
+	    Keys = check_keys(Name, List, record_info(fields, cstruct)),
+	    check_duplicates(Name, Keys)
     end,
 
     Cs0 = #cstruct{name = Name,
