@@ -564,7 +564,7 @@ insert_op(Tid, _, {op, change_table_copy_type, N, FromS, ToS, TabDef}, InPlace, 
 		    disc_delete_table(Tab, FromS),
                     ok = ToMod:delete_table(ToAlias, Tab),
 		    ok = ToMod:create_table(ToAlias, Tab, []),
-		    ok = ToMod:load_table(ToAlias, Tab, {dumper,ext}, TabDef),
+		    ok = ToMod:load_table(ToAlias, Tab, {dumper,change_table_copy_type}, TabDef),
 		    ok = load_from_logfile(ToS, Tab, Logtmp),
 		    file:delete(Logtmp),
 		    restore_indexes(Tab, ToS, Cs);
@@ -584,13 +584,12 @@ insert_op(Tid, _, {op, change_table_copy_type, N, FromS, ToS, TabDef}, InPlace, 
 
                     ok = ToMod:delete_table(ToAlias, Tab),
 		    ok = ToMod:create_table(ToAlias, Tab, []),
-		    ok = ToMod:load_table(ToAlias, Tab, {dumper,ext}, TabDef),
+		    ok = ToMod:load_table(ToAlias, Tab, {dumper,change_table_copy_type}, TabDef),
 		    ok = load_from_logfile(ToS, Tab, Logtmp),
 		    file:delete(Logtmp),
 		    restore_indexes(Tab, ToS, Cs);
 
 		{{ext,_FromAlias,_FromMod} = FromS, ToS} ->
-                    %% TODO - update mnesia_schema:prepare_op when implemented
 		    disc_delete_table(Tab, FromS),
 		    case ToS of
 			ram_copies ->
@@ -711,7 +710,7 @@ insert_op(Tid, _, {op, restore_recreate, TabDef}, InPlace, InitBy) ->
 	    end
     end,
     StorageProps = Cs#cstruct.storage_properties,
-    
+
     %% And create new ones..
     if
 	(InitBy == startup) or (Semantics == unknown) ->
@@ -736,7 +735,7 @@ insert_op(Tid, _, {op, restore_recreate, TabDef}, InPlace, InitBy) ->
 	    Args = [{file, mnesia_lib:tab2dat(Tab)},
 		    {type, mnesia_lib:disk_type(Tab, Type)},
 		    {keypos, 2},
-		    {repair, mnesia_monitor:get_env(auto_repair)} 
+		    {repair, mnesia_monitor:get_env(auto_repair)}
 		    | DetsProps ],
 	    mnesia_monitor:open_dets(Tab, Args);
 	element(1,Storage) == ext ->
@@ -781,7 +780,7 @@ insert_op(Tid, _, {op, create_table, TabDef}, InPlace, InitBy) ->
 	    Copies = mnesia_lib:copy_holders(Cs),
 	    Active = mnesia_lib:intersect(Copies, val({current, db_nodes})),
 	    [mnesia_controller:add_active_replica(Tab, N, Cs) || N <- Active],
-	    
+
 	    case Storage of
 		unknown ->
 		    mnesia_lib:unset({Tab, create_table}),
@@ -1112,17 +1111,16 @@ open_files(Tab, Semantics, Storage, UpdateInPlace, InitBy)
 			    Args = [{file, Fname},
 				    {keypos, 2},
 				    {repair, mnesia_monitor:get_env(auto_repair)},
-				    {type, mnesia_lib:disk_type(Tab, Type)} 
+				    {type, mnesia_lib:disk_type(Tab, Type)}
 				    | DetsProps],
 			    {ok, _} = mnesia_monitor:open_dets(Tab, Args),
 			    put({?MODULE, Tab}, {opened_dumper, dat}),
 			    true;
 		       element(1, Storage) == ext ->
 			    {ext, Alias, Mod} = Storage,
-			    Mod:load_table(Alias, Tab, {dumper, ext},
+			    Mod:load_table(Alias, Tab, InitBy,
 					   mnesia_schema:cs2list(Cs)),
-						% TODO: right reason?
-			    put({?MODULE, Tab}, {opened_dumper, ext}),
+			    put({?MODULE, Tab}, {opened_dumper,ext}),
 			    true
 		    end
 	    end;
@@ -1237,7 +1235,6 @@ close_files(_, _, _InitBy, []) ->
 
 %% If storage is unknown during close clean up files, this can happen if timing
 %% is right and dirty_write conflicts with schema operations.
-%% TODO: What to do here if it's an external copy type?
 do_close(_, _, Tab, ext, {ext,Alias,Mod}) ->
     Mod:close_table(Alias, Tab);
 do_close(_, _, Tab, dcl, unknown) ->
@@ -1370,7 +1367,6 @@ raw_dump_table(DetsRef, EtsRef) ->
 dump_to_logfile(Storage, Tab) ->
     case mnesia_monitor:use_dir() of
 	true ->
-	    %% mnesia_lib:lock_table(Tab), % TODO: is this lock needed
 	    Logtmp = mnesia_lib:tab2logtmp(Tab),
 	    file:delete(Logtmp),
 	    case disk_log:open([{name, make_ref()},
