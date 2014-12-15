@@ -163,10 +163,6 @@ del_object_bag_([IxK|IxKs], Found, Type, Tab, Key, Obj, Ixt) ->
 del_object_bag_([], _, _, _, _, _, _) ->
     ok.
 
-
-%% intersection(L1, L2) ->
-%%     L1 -- (L1 -- L2).
-
 clear_index(Index, Tab, K, Obj) ->
     clear_index2(Index#index.pos_list, Tab, K, Obj).
 
@@ -304,8 +300,6 @@ delete_transient_index(Tab, Pos, {ext, Alias, Mod}) ->
 		      {P, T, _} = lists:keyfind(Pos, 1, Cs#cstruct.index),
 		      {P, T};
 		 {P, T, _} -> {P, T}
-		 %% is_tuple(Pos) ->
-		 %%      Pos
 	      end,
     Tag = {Tab, index, PosInfo},
     Mod:close_table(Alias, Tag),
@@ -411,8 +405,6 @@ create_fun(Cont, Tab, Pos) ->
 					 PrimK = element(2, Obj),
 					 [{V, PrimK} || V <- IxF(Obj)]
 				 end, Recs),
-		    %% IdxElems = [{element(Pos, Obj), element(2, Obj)}
-		    %% 		|| Obj <- Recs],
 		    {IdxElems, create_fun(Next, Tab, Pos)}
 	    end;
        (close) ->
@@ -439,9 +431,6 @@ add_ram_index(Tab, Storage, {Pos, Type,_}) ->
 		     true = ?ets_insert(
 			       Index, [IxFun(V, PrimK)
 				       || V <- IxValsF(Rec)])
-		     %% true = ?ets_insert(
-		     %% 	       Index, IxFun(element(Pos, Rec),
-		     %% 			    element(2, Rec)))
 	     end,
     mnesia_lib:db_fixtable(ram_copies, Tab, true),
     true = mnesia_lib:db_foldl(Storage, Insert, true, Tab),
@@ -565,17 +554,6 @@ get_index_table(Tab, _Storage, Pos) ->
     {_IxType, Ixt} = pick_index(PosL, Tab, Pos),
     Ixt.
 
-%% get_index_table(Tab, ram_copies, Pos) ->
-%%     {ram,  val({Tab, {index, Pos}})};
-%% get_index_table(Tab, disc_copies, Pos) ->
-%%     {ram,  val({Tab, {index, Pos}})};
-%% get_index_table(Tab, disc_only_copies, Pos) ->
-%%     {dets, val({Tab, {index, Pos}})};
-%% get_index_table(Tab, {ext,_,_} = Ext, Pos) ->
-%%     {Ext,  val({Tab, {index, Pos}})};
-%% get_index_table(_Tab, unknown, _Pos) ->
-%%     unknown.
-
 index_vals_f(Storage, Tab, {_} = Pos) ->
     index_vals_f(Storage, Tab,
 		 lists:keyfind(Pos, 1, mnesia_schema:index_plugins()));
@@ -595,18 +573,3 @@ index_vals_f(Storage, Tab, Pos) when is_integer(Pos) ->
 		    F(Alias, Tab, Pos, Obj)
 	    end
     end.
-%% index_vals_f({ext, Alias, Mod}, Tab, Pos) ->
-%%     case Mod:semantics(Alias, index_fun) of
-%% 	undefined ->
-%% 	    fun(Obj) ->
-%% 		    [element(Pos, Obj)]
-%% 	    end;
-%% 	F when is_function(F, 4) ->
-%% 	    fun(Obj) ->
-%% 		    F(Alias, Tab, Pos, Obj)
-%% 	    end
-%%     end;
-%% index_vals_f(_, _, Pos) ->
-%%     fun(Obj) ->
-%% 	    [element(Pos, Obj)]
-%%     end.
