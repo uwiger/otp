@@ -1174,7 +1174,8 @@ db_foldl(Fun, Acc, Tab) ->
     db_foldl(val({Tab, storage_type}), Fun, Acc, Tab).
 
 db_foldl(Storage, Fun, Acc, Tab) ->
-    db_foldl(Storage, Fun, Acc, Tab, [{'_', [], ['$_']}], 100).
+    Limit = mnesia_monitor:get_env(fold_chunk_size),
+    db_foldl(Storage, Fun, Acc, Tab, [{'_', [], ['$_']}], Limit).
 
 db_foldl(ram_copies, Fun, Acc, Tab, Pat, Limit) ->
     mnesia_lib:db_fixtable(ram_copies, Tab, true),

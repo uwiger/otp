@@ -691,6 +691,7 @@ env() ->
      extra_db_nodes,
      ignore_fallback_at_startup,
      fallback_error_function,
+     fold_chunk_size,
      max_wait_for_decision,
      schema_location,
      core_dir,
@@ -736,6 +737,8 @@ default_env(ignore_fallback_at_startup) ->
     false;
 default_env(fallback_error_function) ->
     {mnesia, lkill};
+default_env(fold_chunk_size) ->
+    100;
 default_env(max_wait_for_decision) ->
     infinity;
 default_env(schema_location) ->
@@ -791,6 +794,8 @@ do_check_type(extra_db_nodes, L) when is_list(L) ->
 	     (A) when is_atom(A) -> true
 	  end,
     lists:filter(Fun, L);
+do_check_type(fold_chunk_size, I) when is_integer(I), I > 0;
+				       I =:= infinity -> I;
 do_check_type(max_wait_for_decision, infinity) -> infinity;
 do_check_type(max_wait_for_decision, I) when is_integer(I), I > 0 -> I;
 do_check_type(schema_location, M) -> media(M);
