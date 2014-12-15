@@ -977,19 +977,6 @@ disc_only_open_fun({ext,Alias,Mod}, Cs) ->
 	    ok = Mod:load_table(Alias, T, restore, mnesia_schema:cs2list(Cs))
     end.
 
-%% disc_only_add_fun(disc_only_copies, #cstruct{name = Tab,
-%%                                              record_name = RecName}) ->
-%%     fun(T, Key, Rec, LT) when T =:= LT#local_tab.name ->
-%% 	    case Rec of
-%% 		{_T, Key} ->
-%% 		    ok = dets:delete(T, Key);
-%% 		(Rec) when T =:= RecName ->
-%% 		    ok = dets:insert(Tab, Rec);
-%% 		(Rec) ->
-%% 		    Rec2 = setelement(1, Rec, RecName),
-%% 		    ok = dets:insert(T, Rec2)
-%% 	    end
-%%     end;
 disc_only_add_fun(Storage, #cstruct{name = Tab,
 				    record_name = RecName}) ->
     fun(T, Key, Rec, #local_tab{name = T}) when T =:= Tab->
