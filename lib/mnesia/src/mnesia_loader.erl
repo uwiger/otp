@@ -497,14 +497,6 @@ ext_init_table(Action, Alias, Mod, Tab, Fun, State, Sender) ->
 
 init_table(Tab, {ext,Alias,Mod}, Fun, State, Sender) ->
     ext_init_table(Alias, Mod, Tab, Fun, State, Sender);
-    %% case catch Mod:init_table(Alias, Tab, Fun, Sender) of
-    %% 	true ->
-    %% 	    ok;
-    %%     ok ->           % "ets-style" is true, "dets-style" is ok;
-    %%                     % be nice and accept both :)
-    %%         ok;
-    %% 	{'EXIT', Else} -> Else
-    %% end;
 init_table(Tab, disc_only_copies, Fun, DetsInfo,Sender) ->
     ErtsVer = erlang:system_info(version),
     case DetsInfo of
