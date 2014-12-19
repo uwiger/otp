@@ -1074,9 +1074,6 @@ verify_cstruct(#cstruct{} = Cs) ->
     assert_correct_cstruct(Cs1),
     Cs1.
 
-%% default_index_type() ->
-%%     bag.
-
 expand_index_attrs(#cstruct{index = Ix, attributes = Attrs,
 			    name = Tab} = Cs) ->
     {AllowedIndexTypes, Default} = allowed_index_types(Cs),
@@ -1094,10 +1091,6 @@ expand_index_attrs(Ix, Tab, Attrs, Allowed, Default) ->
 		      ix_allowed(P, Type, Allowed, Attrs, Tab);
 		 ({P, Type, user}) ->
 		      ix_allowed(P, Type, Allowed, Attrs, Tab);
-		 %% ({P, bag}) when is_integer(P); is_atom(P) ->
-		 %%      {attr_to_pos(P, Attrs), bag, user};
-		 %% ({P, ordered}) when is_integer(P); is_atom(P) ->
-		 %%      {attr_to_pos(P, Attrs), ordered, user};
 		 (_Other) ->
 		      mnesia:abort({bad_type, Tab, {index, Ix}})
 	      end, Ix).
